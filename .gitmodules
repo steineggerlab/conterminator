@@ -1,0 +1,3 @@
+[submodule "lib/MMseqs2"]
+	path = lib/MMseqs2
+	url = https://github.com/soedinglab/MMseqs2
