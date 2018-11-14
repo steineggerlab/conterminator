@@ -7,7 +7,7 @@
 
 
 #include <utility>
-#include <vector>
+#include <deque>
 #include <iostream>
 
 
@@ -19,20 +19,25 @@ public:
 
     IntervalTree(){
         root=NULL;
-        nodesMaxelements = 1024;
-        nodesBuffer = (Node*)malloc(nodesMaxelements* sizeof(Node));
-        currNodeElement = 0;
+        for(size_t i = 0; i < 1024; i++){
+            buffers.push_back(new Node());
+        }
+        std::cout << buffers.size() << std::endl;
+        it = buffers.begin();
     }
 
 
     ~IntervalTree(){
         root=NULL;
-        free(nodesBuffer);
+        // prints [3, 2, 1]
+        for (it = buffers.begin(); it != buffers.end(); it++) {
+            delete *it;
+        }
     }
 
     struct Node
     {
-        Node(int low, int high) : low(low), high(high), left(NULL), right(NULL){}
+        Node() {}
         // interval data
         int low, high;
         // node data
@@ -42,7 +47,7 @@ public:
 
     void reset(){
         root=NULL;
-        currNodeElement=0;
+        it = buffers.begin();
     }
 
     Node * insert(int low, int high){
@@ -51,6 +56,9 @@ public:
     }
 
     bool doesOverlap(int low, int high){
+        if(low > high){
+            std::swap(low, high);
+        }
         return (overlapSearch(root, low, high) == NULL) ? false : true;
     }
 
@@ -61,9 +69,8 @@ public:
 
 private:
     Node *root;
-    Node * nodesBuffer;
-    int nodesMaxelements;
-    int currNodeElement;
+    std::deque<Node*> buffers;
+    std::deque<Node*>::iterator it;
 
     void print(Node *root)
     {
@@ -78,19 +85,21 @@ private:
     }
 
     Node* createNode(int low, int high){
-        if(currNodeElement >= nodesMaxelements){
-            nodesMaxelements = nodesMaxelements * 2;
-            realloc(nodesBuffer, nodesMaxelements * sizeof (Node));
+        if(it + 1 == buffers.end()){
+            size_t prevBufferSize = buffers.size()*2;
+            for(size_t i = 0; i < prevBufferSize; i++ ){
+                buffers.push_back(new Node());
+            }
         }
 
-        Node * node = &nodesBuffer[currNodeElement];
+        Node * node = *it;
+        it++;
+        //Node * node = &nodesBuffer[currNodeElement];
         node->left=NULL;
         node->right=NULL;
         node->low  = low;
         node->high = high;
         node->max = high;
-
-        currNodeElement++;
         return node;
     }
 
