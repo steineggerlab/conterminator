@@ -96,7 +96,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
     }
     struct TaxonInformation{
         TaxonInformation(int currTaxa, int ancestorTax, char * data) :
-            currTaxa(ancestorTax), ancestorTax(ancestorTax), data(data){}
+            currTaxa(currTaxa), ancestorTax(ancestorTax), data(data){}
         int currTaxa;
         int ancestorTax;
         char * data;

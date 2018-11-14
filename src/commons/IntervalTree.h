@@ -22,7 +22,6 @@ public:
         for(size_t i = 0; i < 1024; i++){
             buffers.push_back(new Node());
         }
-        std::cout << buffers.size() << std::endl;
         it = buffers.begin();
     }
 
@@ -90,6 +89,7 @@ private:
             for(size_t i = 0; i < prevBufferSize; i++ ){
                 buffers.push_back(new Node());
             }
+            std::cout << "Buffer Size: " << buffers.size() << std::endl;
             it--;
         }
 
