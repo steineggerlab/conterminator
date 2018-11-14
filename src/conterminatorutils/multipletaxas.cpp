@@ -149,13 +149,14 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                 for(int i = 0 ; i < elements.size(); i++){
                     size_t taxon = elements[i].first.first;
                     char * data = elements[i].second;
-                    char * nextData = Util::skipLine(data);
-                    size_t dataSize = nextData - data;
-                    resultData.append(data, dataSize-1);
-                    resultData.push_back('\t');
-                    int len;
 
                     if(taxon != 0){
+                        char * nextData = Util::skipLine(data);
+                        size_t dataSize = nextData - data;
+                        resultData.append(data, dataSize-1);
+                        resultData.push_back('\t');
+                        int len;
+
                         TaxonNode* node = t.findNode(taxon);
                         if(node == NULL){
                             len = snprintf(buffer, 1024, "0\tno rank\tunclassified\n");
@@ -169,14 +170,15 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                                                elements[i].first.second, node->taxon, node->rank.c_str(), node->name.c_str(), lcaRanks.c_str());
                             }
                         }
+                        if(len < 0){
+                            Debug(Debug::WARNING) << "Taxon record could not be written. Entry: " << i << "!\n";
+                            continue;
+                        }
+                        resultData.append(buffer, len);
                     } else {
-                        len = snprintf(buffer, 1024, "0\tno rank\tunclassified\n");
-                    }
-                    if(len < 0){
-                        Debug(Debug::WARNING) << "Taxon record could not be written. Entry: " << i << "!\n";
                         continue;
                     }
-                    resultData.append(buffer, len);
+
                 }
             }
             writer.writeData(resultData.c_str(), resultData.size(), key, thread_idx);
