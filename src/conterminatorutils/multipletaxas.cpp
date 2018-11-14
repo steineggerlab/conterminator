@@ -150,13 +150,17 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
 
                     if(taxon != 0){
                         TaxonNode* node = t.findNode(taxon);
-                        std::string lcaRanks = Util::implode(t.AtRanks(node, ranks), ':');
-                        if (ranks.empty() == false) {
-                            len = snprintf(buffer, 10000, "%d\t%s\t%s\n",
-                                           node->taxon, node->rank.c_str(), node->name.c_str());
-                        } else {
-                            len = snprintf(buffer, 10000, "%d\t%s\t%s\t%s\n",
-                                           node->taxon, node->rank.c_str(), node->name.c_str(), lcaRanks.c_str());
+                        if(node == NULL){
+                            len = snprintf(buffer, 1024, "0\tno rank\tunclassified\n");
+                        }else{
+                            std::string lcaRanks = Util::implode(t.AtRanks(node, ranks), ':');
+                            if (ranks.empty() == false) {
+                                len = snprintf(buffer, 10000, "%d\t%s\t%s\n",
+                                               node->taxon, node->rank.c_str(), node->name.c_str());
+                            } else {
+                                len = snprintf(buffer, 10000, "%d\t%s\t%s\t%s\n",
+                                               node->taxon, node->rank.c_str(), node->name.c_str(), lcaRanks.c_str());
+                            }
                         }
                     } else {
                         len = snprintf(buffer, 1024, "0\tno rank\tunclassified\n");
