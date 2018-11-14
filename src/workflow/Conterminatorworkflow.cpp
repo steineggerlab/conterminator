@@ -9,12 +9,25 @@
 
 void setConterminatorWorkflowDefaults(LocalParameters *p) {
     p->alignmentMode = Parameters::ALIGNMENT_MODE_SCORE_COV_SEQID;
+    p->sensitivity = 5.7;
+    p->evalThr = 0.001;
+    //p->orfLongest = true;
+    p->orfStartMode = 1;
+    p->orfMinLength = 30;
+    p->orfMaxLength = 32734;
+    p->forwardFrames= "1";
+    p->reverseFrames= "1";
+    p->maxSeqLen = 500;
+    p->cov = 0.0;
+    p->sequenceOverlap = 50;
+    p->kmersPerSequence = 30;
+    p->rescoreMode = 2;
 }
 
 int conterminator(int argc, const char **argv, const Command &command) {
     LocalParameters &par = LocalParameters::getLocalInstance();
     setConterminatorWorkflowDefaults(&par);
-    par.parseParameters(argc, argv, command, 4);
+    par.parseParameters(argc, argv, command, 3);
 
     CommandCaller cmd;
     std::string tmpPath = par.filenames.back();
@@ -48,9 +61,14 @@ int conterminator(int argc, const char **argv, const Command &command) {
 
     cmd.addVariable("REMOVE_TMP", par.removeTmpFiles ? "TRUE" : NULL);
     cmd.addVariable("RUNNER", par.runner.c_str());
+
     cmd.addVariable("SEARCH1_PAR", par.createParameterString(par.conterminatorSearch).c_str());
-
-
+    cmd.addVariable("EXTRACT_FRAMES_PAR", par.createParameterString(par.extractframes).c_str());
+    cmd.addVariable("SPLITSEQ_PAR", par.createParameterString(par.splitsequence).c_str());
+    cmd.addVariable("RESCORE_DIAGONAL_PAR", par.createParameterString(par.rescorediagonal).c_str());
+    cmd.addVariable("OFFSETALIGNMENT_PAR", par.createParameterString(par.onlythreads).c_str());
+    cmd.addVariable("MULTIPLETAXA_PAR", par.createParameterString(par.onlythreads).c_str());
+    cmd.addVariable("DISTANCETON_PAR", par.createParameterString(par.onlythreads).c_str());
 //    cmd.addVariable("KMERMATCHER_PAR", par.createParameterString(par.kmermatcher).c_str());
 //    par.alphabetSize = alphabetSize;
 //    par.kmerSize = kmerSize;
