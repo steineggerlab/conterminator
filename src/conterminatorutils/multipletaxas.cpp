@@ -76,7 +76,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
         unsigned int thread_idx = 0;
         std::string resultData;
         resultData.reserve(4096);
-        std::vector< std::pair<unsigned int, char* > > elements;
+        std::vector< std::pair<std::pair<int, int>, char* > > elements;
 #ifdef OPENMP
         thread_idx = (unsigned int) omp_get_thread_num();
 #endif
@@ -114,10 +114,8 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                     continue;
                 }
                 unsigned int taxon = mappingIt->second;
-                elements.push_back(std::make_pair(taxon, data));
-                // remove blacklisted taxa
-                // remove blacklisted taxa
-                for (int j = 0; j < taxListSize && isAncestor == false; ++j) {
+                int j;
+                for ( j = 0; j < taxListSize ; ++j) {
                     if (taxalist[j] == 0) {
                         isAncestor = std::max(isAncestor, (taxon == 0) ? true : false);
                         continue;
@@ -130,7 +128,16 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                     bool isTaxaAncestor = t.IsAncestor(taxalist[j], taxon);
                     taxaCounter[j] += isTaxaAncestor;
                     isAncestor = std::max(isAncestor, isTaxaAncestor);
+                    if(isAncestor==true){
+                        break;
+                    }
                 }
+                if(isAncestor){
+                    elements.push_back(std::make_pair(std::make_pair(taxon, taxalist[j] ), data));
+                }else{
+                    elements.push_back(std::make_pair(std::make_pair(taxon, 0 ), data));
+                }
+
                 data = Util::skipLine(data);
             }
             int distinctTaxaCnt = 0;
@@ -140,7 +147,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
 
             if(distinctTaxaCnt > 1){
                 for(int i = 0 ; i < elements.size(); i++){
-                    size_t taxon = elements[i].first;
+                    size_t taxon = elements[i].first.first;
                     char * data = elements[i].second;
                     char * nextData = Util::skipLine(data);
                     size_t dataSize = nextData - data;
@@ -155,11 +162,11 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                         }else{
                             std::string lcaRanks = Util::implode(t.AtRanks(node, ranks), ':');
                             if (ranks.empty() == false) {
-                                len = snprintf(buffer, 10000, "%d\t%s\t%s\n",
-                                               node->taxon, node->rank.c_str(), node->name.c_str());
+                                len = snprintf(buffer, 10000, "%d\t%d\t%s\t%s\n",
+                                               elements[i].first.second, node->taxon, node->rank.c_str(), node->name.c_str());
                             } else {
-                                len = snprintf(buffer, 10000, "%d\t%s\t%s\t%s\n",
-                                               node->taxon, node->rank.c_str(), node->name.c_str(), lcaRanks.c_str());
+                                len = snprintf(buffer, 10000, "%d\t%d\t%s\t%s\t%s\n",
+                                               elements[i].first.second, node->taxon, node->rank.c_str(), node->name.c_str(), lcaRanks.c_str());
                             }
                         }
                     } else {
