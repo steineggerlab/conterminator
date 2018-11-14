@@ -6,16 +6,43 @@
 #include "Util.h"
 #include "filterdb.h"
 #include <algorithm>
-
+#include "Matcher.h"
+#include "IntervalTree.h"
 #ifdef OPENMP
 #include <omp.h>
 #endif
 
 
+
 int multipletaxas(int argc, const char **argv, const Command& command) {
     Parameters& par = Parameters::getInstance();
-    par.taxonList = "2,2157,2759,10239";
+    // bacteria, archaea, eukaryotic, virus, artifical sequences
+    par.taxonList = "2,2157,2759,10239,81077";
     par.parseParameters(argc, argv, command, 3);
+
+
+//    int ints[][2] = {{15, 20}, {10, 30}, {17, 19},
+//                       {5, 20}, {12, 15}, {30, 40}};
+//    int ints[][2] =  {{15,20} , {4,25}, {3,30}};
+//    IntervalTree tree;
+//    int n = sizeof(ints)/sizeof(ints[0]);
+//    for (int i = 0; i < n; i++)
+//        tree.insert(ints[i][0], ints[i][1]);
+//    tree.print();
+//    std::cout << tree.doesOverlap(26,27) << std::endl;
+//    std::cout << tree.doesOverlap(1,2) << std::endl;
+//    std::cout << tree.doesOverlap(15,20) << std::endl;
+//    std::cout << tree.doesOverlap(14,20) << std::endl;
+//    std::cout << tree.doesOverlap(14,19) << std::endl;
+//    std::cout << tree.doesOverlap(34,28) << std::endl;
+//    std::cout << "New tree" << std::endl;
+//    tree.reset();
+//    for (int i = 0; i < 2; i++)
+//        tree.insert(ints[i][0], ints[i][1]);
+//    tree.print();
+//    std::cout << tree.doesOverlap(10,20) << std::endl;
+//    std::cout << tree.doesOverlap(34,28) << std::endl;
+
 
     std::string nodesFile = par.db1 + "_nodes.dmp";
     std::string namesFile = par.db1 + "_names.dmp";
@@ -67,7 +94,13 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
     for (size_t i = 0; i < taxListSize; ++i) {
         taxalist[i] = Util::fast_atoi<int>(list[i].c_str());
     }
-
+    struct TaxonInformation{
+        TaxonInformation(int currTaxa, int ancestorTax, char * data) :
+            currTaxa(ancestorTax), ancestorTax(ancestorTax), data(data){}
+        int currTaxa;
+        int ancestorTax;
+        char * data;
+    };
 #pragma omp parallel
     {
         size_t * taxaCounter = new size_t[taxListSize];
@@ -76,7 +109,9 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
         unsigned int thread_idx = 0;
         std::string resultData;
         resultData.reserve(4096);
-        std::vector< std::pair<std::pair<int, int>, char* > > elements;
+        std::vector<TaxonInformation> elements;
+        IntervalTree speciesRange;
+
 #ifdef OPENMP
         thread_idx = (unsigned int) omp_get_thread_num();
 #endif
@@ -86,6 +121,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
             Debug::printProgress(i);
             resultData.clear();
             elements.clear();
+            speciesRange.reset();
             memset(taxaCounter, 0, taxListSize * sizeof(size_t));
             unsigned int key = reader.getDbKey(i);
             char *data = reader.getData(i);
@@ -135,24 +171,41 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                     }
                 }
                 if(isAncestor){
-                    elements.push_back(std::make_pair(std::make_pair(taxon, taxalist[j] ), data));
+                    elements.push_back(TaxonInformation(taxon, taxalist[j], data));
                 }else{
-                    elements.push_back(std::make_pair(std::make_pair(taxon, 0 ), data));
+                    elements.push_back(TaxonInformation(taxon, 0, data));
                 }
 
                 data = Util::skipLine(data);
             }
             int distinctTaxaCnt = 0;
+            int maxTaxCnt = 0;
+            int maxTaxId = INT_MAX;
+
             for(size_t i = 0; i < taxListSize; i++){
-                distinctTaxaCnt += (taxaCounter[i] > 0);
+                bool hasTaxa = (taxaCounter[i] > 0);
+                distinctTaxaCnt += hasTaxa;
+                if(hasTaxa && taxaCounter[i] > maxTaxCnt){
+                    maxTaxCnt = taxaCounter[i];
+                    maxTaxId =  taxalist[i];
+                }
             }
 
             if(distinctTaxaCnt > 1){
-                for(int i = 0 ; i < elements.size(); i++){
-                    size_t taxon = elements[i].first.first;
-                    char * data = elements[i].second;
+                // fill up interval tree with elements
+                for(int i = 0 ; i < elements.size(); i++) {
+                    if(elements[i].ancestorTax != maxTaxId) {
+                        Matcher::result_t res = Matcher::parseAlignmentRecord(elements[i].data, true);
+                        speciesRange.insert(res.qStartPos, res.qEndPos);
+                    }
+                }
 
-                    if(taxon != 0){
+                for(int i = 0 ; i < elements.size(); i++){
+                    size_t taxon = elements[i].currTaxa;
+                    Matcher::result_t res = Matcher::parseAlignmentRecord(elements[i].data, true);
+                    char * data = elements[i].data;
+                    bool overlapsWithOtherSpecie = speciesRange.doesOverlap(res.qStartPos, res.qEndPos);
+                    if(taxon != 0 && overlapsWithOtherSpecie == true){
                         char * nextData = Util::skipLine(data);
                         size_t dataSize = nextData - data;
                         resultData.append(data, dataSize-1);
@@ -166,10 +219,10 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                             std::string lcaRanks = Util::implode(t.AtRanks(node, ranks), ':');
                             if (ranks.empty() == false) {
                                 len = snprintf(buffer, 10000, "%d\t%d\t%s\t%s\n",
-                                               elements[i].first.second, node->taxon, node->rank.c_str(), node->name.c_str());
+                                               elements[i].ancestorTax, node->taxon, node->rank.c_str(), node->name.c_str());
                             } else {
                                 len = snprintf(buffer, 10000, "%d\t%d\t%s\t%s\t%s\n",
-                                               elements[i].first.second, node->taxon, node->rank.c_str(), node->name.c_str(), lcaRanks.c_str());
+                                               elements[i].ancestorTax, node->taxon, node->rank.c_str(), node->name.c_str(), lcaRanks.c_str());
                             }
                         }
                         if(len < 0){

@@ -10,7 +10,7 @@ add_executable(conterminator
         ${workflow_source_files}
         commons/LocalCommandDeclarations.h
         conterminator.cpp
-        )
+        commons/IntervalTree.h)
 
 mmseqs_setup_derived_target(conterminator)
 target_link_libraries(conterminator version)
