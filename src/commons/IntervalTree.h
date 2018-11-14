@@ -19,7 +19,7 @@ public:
 
     IntervalTree(){
         root=NULL;
-        for(size_t i = 0; i < 2; i++){
+        for(size_t i = 0; i < 1024; i++){
             buffers.push_back(new Node());
         }
         std::cout << buffers.size() << std::endl;
@@ -85,11 +85,12 @@ private:
     }
 
     Node* createNode(int low, int high){
-        if(std::distance(buffers.end(), it) == 1){
+        if(it == buffers.end()){
             size_t prevBufferSize = buffers.size()*2;
             for(size_t i = 0; i < prevBufferSize; i++ ){
                 buffers.push_back(new Node());
             }
+            it--;
         }
 
         Node * node = *it;
