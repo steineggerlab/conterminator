@@ -67,10 +67,10 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
     for (size_t i = 0; i < taxListSize; ++i) {
         taxalist[i] = Util::fast_atoi<int>(list[i].c_str());
     }
-    size_t * taxaCounter = new size_t[taxListSize];
 
 #pragma omp parallel
     {
+        size_t * taxaCounter = new size_t[taxListSize];
         char *entry[255];
         char buffer[10000];
         unsigned int thread_idx = 0;
@@ -84,6 +84,8 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
 #pragma omp for schedule(dynamic, 10)
         for (size_t i = 0; i < reader.getSize(); ++i) {
             Debug::printProgress(i);
+            resultData.clear();
+            elements.clear();
             memset(taxaCounter, 0, taxListSize * sizeof(size_t));
             unsigned int key = reader.getDbKey(i);
             char *data = reader.getData(i);
@@ -182,9 +184,8 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                 }
             }
             writer.writeData(resultData.c_str(), resultData.size(), key, thread_idx);
-            resultData.clear();
-            elements.clear();
         }
+        delete [] taxaCounter;
     }
 
     Debug(Debug::INFO) << "\n";
