@@ -7,7 +7,7 @@
 
 
 #include <utility>
-#include <deque>
+#include <list>
 #include <iostream>
 
 
@@ -19,7 +19,7 @@ public:
 
     IntervalTree(){
         root=NULL;
-        for(size_t i = 0; i < 1024; i++){
+        for(size_t i = 0; i < 2; i++){
             buffers.push_back(new Node());
         }
         std::cout << buffers.size() << std::endl;
@@ -69,8 +69,8 @@ public:
 
 private:
     Node *root;
-    std::deque<Node*> buffers;
-    std::deque<Node*>::iterator it;
+    std::list<Node*> buffers;
+    std::list<Node*>::iterator it;
 
     void print(Node *root)
     {
@@ -85,7 +85,7 @@ private:
     }
 
     Node* createNode(int low, int high){
-        if(it + 1 == buffers.end()){
+        if(std::distance(buffers.end(), it) == 1){
             size_t prevBufferSize = buffers.size()*2;
             for(size_t i = 0; i < prevBufferSize; i++ ){
                 buffers.push_back(new Node());
@@ -93,7 +93,7 @@ private:
         }
 
         Node * node = *it;
-        it++;
+        std::advance(it, 1);
         //Node * node = &nodesBuffer[currNodeElement];
         node->left=NULL;
         node->right=NULL;
