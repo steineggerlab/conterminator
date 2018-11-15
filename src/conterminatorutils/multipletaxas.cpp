@@ -124,7 +124,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
         std::string resultData;
         resultData.reserve(4096);
         std::vector<TaxonInformation> elements;
-        IntervalTree speciesRange;
+        IntervalArray speciesRange;
 
 #ifdef OPENMP
         thread_idx = (unsigned int) omp_get_thread_num();
