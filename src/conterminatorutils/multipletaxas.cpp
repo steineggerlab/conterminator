@@ -112,7 +112,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
         taxalist[i] = Util::fast_atoi<int>(taxlist[i].c_str());
     }
 
-    std::vector<std::string> blacklist = Util::split(par.taxonList, ",");
+    std::vector<std::string> blacklist = Util::split(par.blacklist, ",");
     const size_t blackListSize = blacklist.size();
     int* blackList = new int[blackListSize];
     for (size_t i = 0; i < blackListSize; ++i) {
