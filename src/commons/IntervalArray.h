@@ -18,9 +18,10 @@ class IntervalArray {
 public:
 
     IntervalArray(){
-        array=(unsigned char *)calloc(1024, sizeof(unsigned char));
-        arraySize = 1024;
-        maxSize = 1024*8;
+        const int size = 1;
+        array=(unsigned char *)calloc(size, sizeof(unsigned char));
+        arraySizeInBytes = size;
+        maxSizeInByte = size*8;
     }
 
 
@@ -40,7 +41,7 @@ public:
     };
 
     void reset(){
-        memset(array, 0, (maxSize/8) * sizeof(unsigned char));
+        memset(array, 0, (maxSizeInByte/8) * sizeof(unsigned char));
     }
 
     unsigned char getLowMask(unsigned int rest) {
@@ -60,11 +61,11 @@ public:
 
     void insert(int low, int high){
         //insert(array, low, high);
-        maxSize = std::max(high, maxSize);
-        if((maxSize/8) >= arraySize){
-            int ceil = MathUtil::ceilIntDivision(maxSize, 8);
-            arraySize = std::max(arraySize *2, ceil);
-            array = (unsigned char *) realloc(array,  arraySize);
+        maxSizeInByte = std::max(high, maxSizeInByte);
+        int ceilMax = MathUtil::ceilIntDivision(maxSizeInByte, 8);
+        if(ceilMax >= arraySizeInBytes){
+            arraySizeInBytes = std::max(arraySizeInBytes * 2, ceilMax);
+            array = (unsigned char *) realloc(array,  arraySizeInBytes);
         }
         bool lowFound = isSet(low);
         bool highFound =  isSet(high);;
@@ -108,7 +109,7 @@ public:
 
     void print(){
         bool started = false;
-        for(int pos = 0; pos < maxSize; pos++){
+        for(int pos = 0; pos < maxSizeInByte; pos++){
             if(isSet(pos)  && started == false){
                 started = true;
                 std::cout << "[" << pos << ", ";
@@ -119,15 +120,15 @@ public:
             }
         }
         if(started == true){
-            std::cout << maxSize - 1 << "]" << std::endl;
+            std::cout << maxSizeInByte - 1 << "]" << std::endl;
         }
     }
 
 
 private:
     unsigned char * array;
-    int arraySize;
-    int maxSize;
+    int arraySizeInBytes;
+    int maxSizeInByte;
 
 };
 
