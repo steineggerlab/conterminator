@@ -30,18 +30,9 @@ public:
         array = NULL;
     }
 
-    struct Node
-    {
-        Node() {}
-        // interval data
-        int low, high;
-        // node data
-        int max;
-        Node *left, *right;
-    };
-
     void reset(){
-        memset(array, 0, (maxSizeInByte/8) * sizeof(unsigned char));
+        int ceilMax = MathUtil::ceilIntDivision(maxSizeInByte, 8);
+        memset(array, 0, ceilMax * sizeof(unsigned char));
     }
 
     unsigned char getLowMask(unsigned int rest) {
@@ -64,7 +55,7 @@ public:
         maxSizeInByte = std::max(high, maxSizeInByte);
         int ceilMax = MathUtil::ceilIntDivision(maxSizeInByte, 8);
         if(ceilMax >= arraySizeInBytes){
-            arraySizeInBytes = std::max(arraySizeInBytes * 2, ceilMax);
+            arraySizeInBytes = std::max(arraySizeInBytes * 2, ceilMax+1);
             array = (unsigned char *) realloc(array,  arraySizeInBytes);
         }
         bool lowFound = isSet(low);
