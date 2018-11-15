@@ -8,6 +8,8 @@
 #include <algorithm>
 #include "Matcher.h"
 #include "IntervalTree.h"
+#include "IntervalArray.h"
+
 #ifdef OPENMP
 #include <omp.h>
 #endif
@@ -20,11 +22,30 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
     par.taxonList = "2,2157,2759,10239,81077";
     par.parseParameters(argc, argv, command, 3);
 
-
-//    int ints[][2] = {{15, 20}, {10, 30}, {17, 19},
-//                       {5, 20}, {12, 15}, {30, 40}};
-//    int ints[][2] =  {{15,20} , {4,25}, {3,30}};
-//    IntervalTree tree;
+//    int ints[][2] = {{4,6},
+//                     {15, 20},
+//                     {10, 25},
+//                     {17, 19},
+//                     {5, 6},
+//                     {12, 15},
+//                     {12, 16},
+//                     {12, 17},
+//                     {12, 18},
+//                     {12, 19},
+//                     {30, 39}};
+//
+//    IntervalArray tree;
+//    tree.reset();
+//    for (int i = 0; i < 2; i++)
+//        tree.insert(ints[i][0], ints[i][1]);
+//    tree.print();
+//    std::cout << tree.doesOverlap(10,20) << std::endl;
+//    std::cout << tree.doesOverlap(34,28) << std::endl;
+//
+//
+//
+//    //int ints[][2] =  {{15,20} , {4,25}, {3,30}};
+//    tree.reset();
 //    int n = sizeof(ints)/sizeof(ints[0]);
 //    for (int i = 0; i < n; i++)
 //        tree.insert(ints[i][0], ints[i][1]);
@@ -36,13 +57,6 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
 //    std::cout << tree.doesOverlap(14,19) << std::endl;
 //    std::cout << tree.doesOverlap(34,28) << std::endl;
 //    std::cout << "New tree" << std::endl;
-//    tree.reset();
-//    for (int i = 0; i < 2; i++)
-//        tree.insert(ints[i][0], ints[i][1]);
-//    tree.print();
-//    std::cout << tree.doesOverlap(10,20) << std::endl;
-//    std::cout << tree.doesOverlap(34,28) << std::endl;
-
 
     std::string nodesFile = par.db1 + "_nodes.dmp";
     std::string namesFile = par.db1 + "_names.dmp";
