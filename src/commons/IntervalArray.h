@@ -5,7 +5,7 @@
 #ifndef CONTERMINATOR_INTERVALARRAY_H
 #define CONTERMINATOR_INTERVALARRAY_H
 
-
+#include "MathUtil.h"
 #include <utility>
 #include <list>
 #include <iostream>
@@ -20,7 +20,7 @@ public:
     IntervalArray(){
         array=(unsigned char *)calloc(1024, sizeof(unsigned char));
         arraySize = 1024;
-        maxSize = 1024;
+        maxSize = 1024*8;
     }
 
 
@@ -62,7 +62,8 @@ public:
         //insert(array, low, high);
         maxSize = std::max(high, maxSize);
         if((maxSize/8) >= arraySize){
-            arraySize = std::max(arraySize *2, (maxSize/8));
+            int ceil = MathUtil::ceilIntDivision(maxSize, 8);
+            arraySize = std::max(arraySize *2, ceil);
             array = (unsigned char *) realloc(array,  arraySize);
         }
         bool lowFound = isSet(low);
