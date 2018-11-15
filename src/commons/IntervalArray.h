@@ -51,6 +51,9 @@ public:
 
 
     void insert(int low, int high){
+        if(low > high){
+            std::swap(low, high);
+        }
         //insert(array, low, high);
         maxSizeInByte = std::max(high, maxSizeInByte);
         int ceilMax = MathUtil::ceilIntDivision(maxSizeInByte, 8);
@@ -83,7 +86,6 @@ public:
 
     bool doesOverlap(int low, int high)
     {
-
         bool lowFound = isSet(low);
         bool highFound =  isSet(high);;
         return (lowFound || highFound);
