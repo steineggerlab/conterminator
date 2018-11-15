@@ -18,8 +18,11 @@
 
 int multipletaxas(int argc, const char **argv, const Command& command) {
     Parameters& par = Parameters::getInstance();
-    // bacteria, archaea, eukaryotic, virus, artifical sequences
-    par.taxonList = "2,2157,2759,10239,81077";
+    // bacteria, archaea, eukaryotic, virus
+    par.taxonList = "2,2157,2759,10239";
+    // unclassified sequences , other sequences,  artifical sequences, retro virus
+    par.blacklist = "12908,28384,81077,35268";
+
     par.parseParameters(argc, argv, command, 3);
 
 //    int ints[][2] = {{4,6},
@@ -102,12 +105,20 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
 
     // a few NCBI taxa are blacklisted by default, they contain unclassified sequences (e.g. metagenomes) or other sequences (e.g. plasmids)
     // if we do not remove those, a lot of sequences would be classified as Root, even though they have a sensible LCA
-    std::vector<std::string> list = Util::split(par.taxonList, ",");
-    const size_t taxListSize = list.size();
+    std::vector<std::string> taxlist = Util::split(par.taxonList, ",");
+    const size_t taxListSize = taxlist.size();
     int* taxalist = new int[taxListSize];
     for (size_t i = 0; i < taxListSize; ++i) {
-        taxalist[i] = Util::fast_atoi<int>(list[i].c_str());
+        taxalist[i] = Util::fast_atoi<int>(taxlist[i].c_str());
     }
+
+    std::vector<std::string> blacklist = Util::split(par.taxonList, ",");
+    const size_t blackListSize = blacklist.size();
+    int* blackList = new int[blackListSize];
+    for (size_t i = 0; i < blackListSize; ++i) {
+        blackList[i] = Util::fast_atoi<int>(blacklist[i].c_str());
+    }
+
     struct TaxonInformation{
         TaxonInformation(int currTaxa, int ancestorTax, char * data) :
             currTaxa(currTaxa), ancestorTax(ancestorTax), data(data){}
@@ -166,6 +177,13 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                     continue;
                 }
                 unsigned int taxon = mappingIt->second;
+                // remove blacklisted taxa
+                for (size_t j = 0; j < blackListSize; ++j) {
+                    if (t.IsAncestor(blackList[j], taxon)) {
+                        goto next;
+                    }
+                }
+
                 int j;
                 for ( j = 0; j < taxListSize ; ++j) {
                     if (taxalist[j] == 0) {
@@ -189,7 +207,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                 }else{
                     elements.push_back(TaxonInformation(taxon, 0, data));
                 }
-
+                next:
                 data = Util::skipLine(data);
             }
             int distinctTaxaCnt = 0;
@@ -257,7 +275,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
 
     Debug(Debug::INFO) << "\n";
     delete[] taxalist;
-
+    delete[] blackList;
     writer.close();
     reader.close();
     return EXIT_SUCCESS;
