@@ -84,7 +84,7 @@ public:
 
     bool doesOverlap(int low, int high)
     {
-
+        // check for overlaps between the intervals
         if(low > high){
             std::swap(low, high);
         }
@@ -103,7 +103,8 @@ public:
         if(lowFound || highFound){
             return true;
         }
-
+        // check if interval is contained in low, high
+        high = std::max(high, maxSizeInByte);
         unsigned int startPos=low/8;
         unsigned int startRest=low%8;
         unsigned int endPos=high/8;
