@@ -100,7 +100,27 @@ public:
         }else{
             highFound = isSet(high);;
         }
-        return (lowFound || highFound);
+        if(lowFound || highFound){
+            return true;
+        }
+
+        unsigned int startPos=low/8;
+        unsigned int startRest=low%8;
+        unsigned int endPos=high/8;
+        unsigned int endRest=high%8;
+        int foundOverlap = 0;
+        for(size_t pos = startPos+1; pos < endPos && foundOverlap == 0; pos++ ){
+            foundOverlap += (array[pos]>0);
+        }
+        unsigned char lowMask = getLowMask(startRest);
+        unsigned char highMask = getHighRest(7-endRest);
+        if(startPos == endPos){
+            foundOverlap += (array[startPos] & lowMask & highMask);
+        }else{
+            foundOverlap += array[startPos] & lowMask;
+            foundOverlap += array[endPos] & highMask;
+        }
+        return (foundOverlap==0)? false : true;
     }
 
     bool isSet(int pos){
