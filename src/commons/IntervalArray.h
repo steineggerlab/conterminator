@@ -104,7 +104,7 @@ public:
             return true;
         }
         // check if interval is contained in low, high
-        high = std::max(high, maxSizeInByte);
+        high = std::min(high, maxSizeInByte);
         unsigned int startPos=low/8;
         unsigned int startRest=low%8;
         unsigned int endPos=high/8;
