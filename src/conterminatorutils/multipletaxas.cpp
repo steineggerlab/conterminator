@@ -22,6 +22,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
     par.taxonList = "2,2157,2759,10239";
     // unclassified sequences , other sequences,  artifical sequences, retro virus
     par.blacklist = "12908,28384,81077,35268";
+    par.blacklist = "12908,28384,81077,35268, 340016, 61964, 48479, 48510";
 
     par.parseParameters(argc, argv, command, 3);
 
@@ -207,6 +208,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
             }
             int distinctTaxaCnt = 0;
             int maxTaxCnt = 0;
+            size_t maxTaxCnt = 0;
             int maxTaxId = -1;
 
             for(size_t i = 0; i < taxListSize; i++){
