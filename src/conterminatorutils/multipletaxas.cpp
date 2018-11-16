@@ -20,47 +20,46 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
     Parameters& par = Parameters::getInstance();
     // bacteria, archaea, eukaryotic, virus
     par.taxonList = "2,2157,2759,10239";
-    // unclassified sequences , other sequences,  artifical sequences, retro virus
-    par.blacklist = "12908,28384,81077,35268";
-    par.blacklist = "12908,28384,81077,35268, 340016, 61964, 48479, 48510";
+    // unclassified sequences , other sequences,  artifical sequences, retro virus, environmental samples
+    par.blacklist = "12908,28384,81077,35268,340016,61964,48479,48510";
 
     par.parseParameters(argc, argv, command, 3);
 
-//    int ints[][2] = {{4,6},
-//                     {15, 20},
-//                     {10, 25},
-//                     {17, 19},
-//                     {5, 6},
-//                     {12, 15},
-//                     {12, 16},
-//                     {12, 17},
-//                     {12, 18},
-//                     {12, 19},
-//                     {30, 39}};
-//
-//    IntervalArray tree;
-//    tree.reset();
-//    for (int i = 0; i < 2; i++)
-//        tree.insert(ints[i][0], ints[i][1]);
-//    tree.print();
-//    std::cout << tree.doesOverlap(10,20) << std::endl;
-//    std::cout << tree.doesOverlap(34,28) << std::endl;
-//
-//
-//
-//    //int ints[][2] =  {{15,20} , {4,25}, {3,30}};
-//    tree.reset();
-//    int n = sizeof(ints)/sizeof(ints[0]);
-//    for (int i = 0; i < n; i++)
-//        tree.insert(ints[i][0], ints[i][1]);
-//    tree.print();
-//    std::cout << tree.doesOverlap(26,27) << std::endl;
-//    std::cout << tree.doesOverlap(1,2) << std::endl;
-//    std::cout << tree.doesOverlap(15,20) << std::endl;
-//    std::cout << tree.doesOverlap(14,20) << std::endl;
-//    std::cout << tree.doesOverlap(14,19) << std::endl;
-//    std::cout << tree.doesOverlap(34,28) << std::endl;
-//    std::cout << "New tree" << std::endl;
+    int ints[][2] = {{4,6},
+                     {15, 20},
+                     {10, 25},
+                     {17, 19},
+                     {5, 6},
+                     {12, 15},
+                     {12, 16},
+                     {12, 17},
+                     {12, 18},
+                     {12, 19},
+                     {30, 39}};
+
+    IntervalArray tree;
+    tree.reset();
+    for (int i = 0; i < 2; i++)
+        tree.insert(ints[i][0], ints[i][1]);
+    tree.print();
+    std::cout << tree.doesOverlap(10,20) << std::endl;
+    std::cout << tree.doesOverlap(34,28) << std::endl;
+
+
+
+    //int ints[][2] =  {{15,20} , {4,25}, {3,30}};
+    tree.reset();
+    int n = sizeof(ints)/sizeof(ints[0]);
+    for (int i = 0; i < n; i++)
+        tree.insert(ints[i][0], ints[i][1]);
+    tree.print();
+    std::cout << tree.doesOverlap(26,27) << std::endl;
+    std::cout << tree.doesOverlap(1,2) << std::endl;
+    std::cout << tree.doesOverlap(15,20) << std::endl;
+    std::cout << tree.doesOverlap(14,20) << std::endl;
+    std::cout << tree.doesOverlap(14,19) << std::endl;
+    std::cout << tree.doesOverlap(34,28) << std::endl;
+    std::cout << "New tree" << std::endl;
 
     std::string nodesFile = par.db1 + "_nodes.dmp";
     std::string namesFile = par.db1 + "_names.dmp";
@@ -231,9 +230,11 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                 for(size_t i = 0 ; i < elements.size(); i++) {
                     if(elements[i].ancestorTax != maxTaxId) {
                         Matcher::result_t res = Matcher::parseAlignmentRecord(elements[i].data, true);
+//                        std::cout << res.qStartPos << "\t" << res.qEndPos << std::endl;
                         speciesRange.insert(res.qStartPos, res.qEndPos);
                     }
                 }
+//                speciesRange.print();
                 for(size_t i = 0 ; i < elements.size(); i++){
                     size_t taxon = elements[i].currTaxa;
                     Matcher::result_t res = Matcher::parseAlignmentRecord(elements[i].data, true);
