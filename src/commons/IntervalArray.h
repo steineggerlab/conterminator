@@ -53,7 +53,7 @@ public:
             std::swap(low, high);
         }
         //insert(array, low, high);
-        maxSizeInByte = std::max(high, maxSizeInByte);
+        maxSizeInByte = std::max(high, maxSizeInByte + 1);
         int ceilMax = MathUtil::ceilIntDivision(maxSizeInByte, 8);
         if(ceilMax >= arraySizeInBytes){
             arraySizeInBytes = std::max(arraySizeInBytes * 2, ceilMax+1);
@@ -84,11 +84,22 @@ public:
 
     bool doesOverlap(int low, int high)
     {
-        if(low >= maxSizeInByte || high >= maxSizeInByte){
-            return false;
+
+        if(low > high){
+            std::swap(low, high);
         }
-        bool lowFound = isSet(low);
-        bool highFound =  isSet(high);;
+        bool lowFound;
+        if(low >= maxSizeInByte){
+            return false;
+        }else{
+            lowFound = isSet(low);
+        }
+        bool highFound;
+        if(high >= maxSizeInByte){
+            highFound = false;
+        }else{
+            highFound = isSet(high);;
+        }
         return (lowFound || highFound);
     }
 
