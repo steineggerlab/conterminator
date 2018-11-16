@@ -13,8 +13,6 @@
 
 class IntervalArray {
 
-// Parts of the codes are taken from https://www.geeksforgeeks.org/interval-tree/
-
 public:
 
     IntervalArray(){
@@ -56,8 +54,10 @@ public:
         maxSizeInByte = std::max(high, maxSizeInByte + 1);
         int ceilMax = MathUtil::ceilIntDivision(maxSizeInByte, 8);
         if(ceilMax >= arraySizeInBytes){
+            int prevSize = arraySizeInBytes;
             arraySizeInBytes = std::max(arraySizeInBytes * 2, ceilMax+1);
             array = (unsigned char *) realloc(array,  arraySizeInBytes);
+            memset(array+prevSize, 0,  arraySizeInBytes-prevSize);
         }
         bool lowFound = isSet(low);
         bool highFound =  isSet(high);;
