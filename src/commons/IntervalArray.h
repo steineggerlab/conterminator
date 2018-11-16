@@ -31,7 +31,7 @@ public:
     }
 
     void reset(){
-        int ceilMax = MathUtil::ceilIntDivision(maxSizeInByte, 8);
+        int ceilMax = MathUtil::ceilIntDivision(std::max(1,maxSizeInByte), 8);
         memset(array, 0, ceilMax * sizeof(unsigned char));
         maxSizeInByte = 0;
     }
