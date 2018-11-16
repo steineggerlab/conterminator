@@ -31,9 +31,9 @@ public:
     }
 
     void reset(){
-        maxSizeInByte = 0;
         int ceilMax = MathUtil::ceilIntDivision(maxSizeInByte, 8);
         memset(array, 0, ceilMax * sizeof(unsigned char));
+        maxSizeInByte = 0;
     }
 
     unsigned char getLowMask(unsigned int rest) {
