@@ -172,7 +172,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                         mapping.begin(), mapping.end(), val, ffindexFilter::compareToFirstInt);
 
                 if (mappingIt->first != val.first) {
-                    Debug(Debug::WARNING) << "No taxon mapping provided for id " << id << "\n";
+//                    Debug(Debug::WARNING) << "No taxon mapping provided for id " << id << "\n";
                     data = Util::skipLine(data);
                     continue;
                 }
