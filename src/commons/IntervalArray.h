@@ -84,6 +84,9 @@ public:
 
     bool doesOverlap(int low, int high)
     {
+        if(low >= maxSizeInByte || high >= maxSizeInByte){
+            return false;
+        }
         bool lowFound = isSet(low);
         bool highFound =  isSet(high);;
         return (lowFound || highFound);
