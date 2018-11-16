@@ -188,15 +188,8 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                     }
                 }
 
-                int j;
+                size_t j;
                 for ( j = 0; j < taxListSize ; ++j) {
-                    if (taxalist[j] == 0) {
-                        isAncestor = std::max(isAncestor, (taxon == 0) ? true : false);
-                        continue;
-                    }
-
-                    std::vector<int> tmpList;
-
                     bool isTaxaAncestor = t.IsAncestor(taxalist[j], taxon);
                     taxaCounter[j] += isTaxaAncestor;
                     isAncestor = std::max(isAncestor, isTaxaAncestor);
@@ -225,7 +218,6 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                 }
             }
 
-
             if(distinctTaxaCnt > 1){
                 if(maxTaxId == -1){
                     Debug(Debug::WARNING) << "Max Tax Id: " << maxTaxId << "!\n";
@@ -235,14 +227,13 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                 }
 
                 // fill up interval tree with elements
-                for(int i = 0 ; i < elements.size(); i++) {
+                for(size_t i = 0 ; i < elements.size(); i++) {
                     if(elements[i].ancestorTax != maxTaxId) {
                         Matcher::result_t res = Matcher::parseAlignmentRecord(elements[i].data, true);
                         speciesRange.insert(res.qStartPos, res.qEndPos);
                     }
                 }
-
-                for(int i = 0 ; i < elements.size(); i++){
+                for(size_t i = 0 ; i < elements.size(); i++){
                     size_t taxon = elements[i].currTaxa;
                     Matcher::result_t res = Matcher::parseAlignmentRecord(elements[i].data, true);
                     char * data = elements[i].data;
