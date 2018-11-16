@@ -212,7 +212,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
             }
             int distinctTaxaCnt = 0;
             int maxTaxCnt = 0;
-            int maxTaxId = INT_MAX;
+            int maxTaxId = 0;
 
             for(size_t i = 0; i < taxListSize; i++){
                 bool hasTaxa = (taxaCounter[i] > 0);
