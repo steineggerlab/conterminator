@@ -207,7 +207,6 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                 data = Util::skipLine(data);
             }
             int distinctTaxaCnt = 0;
-            int maxTaxCnt = 0;
             size_t maxTaxCnt = 0;
             int maxTaxId = -1;
 
