@@ -116,7 +116,8 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
     const size_t blackListSize = blacklist.size();
     int* blackList = new int[blackListSize];
     for (size_t i = 0; i < blackListSize; ++i) {
-        blackList[i] = Util::fast_atoi<int>(blacklist[i].c_str());
+        int currTaxa = Util::fast_atoi<int>(blacklist[i].c_str());
+        blackList[i] = currTaxa;
     }
 
     struct TaxonInformation{
@@ -177,6 +178,9 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                     continue;
                 }
                 unsigned int taxon = mappingIt->second;
+                if (taxon == 0) {
+                    goto next;
+                }
                 // remove blacklisted taxa
                 for (size_t j = 0; j < blackListSize; ++j) {
                     if (t.IsAncestor(blackList[j], taxon)) {
@@ -190,9 +194,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                         isAncestor = std::max(isAncestor, (taxon == 0) ? true : false);
                         continue;
                     }
-                    if (taxon == 0) {
-                        continue;
-                    }
+
                     std::vector<int> tmpList;
 
                     bool isTaxaAncestor = t.IsAncestor(taxalist[j], taxon);
@@ -212,7 +214,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
             }
             int distinctTaxaCnt = 0;
             int maxTaxCnt = 0;
-            int maxTaxId = 0;
+            int maxTaxId = -1;
 
             for(size_t i = 0; i < taxListSize; i++){
                 bool hasTaxa = (taxaCounter[i] > 0);
@@ -223,7 +225,15 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                 }
             }
 
+
             if(distinctTaxaCnt > 1){
+                if(maxTaxId == -1){
+                    Debug(Debug::WARNING) << "Max Tax Id: " << maxTaxId << "!\n";
+                    for(size_t i = 0; i < taxListSize; i++) {
+                        Debug(Debug::WARNING) << taxaCounter[i] << "\n";
+                    }
+                }
+
                 // fill up interval tree with elements
                 for(int i = 0 ; i < elements.size(); i++) {
                     if(elements[i].ancestorTax != maxTaxId) {
