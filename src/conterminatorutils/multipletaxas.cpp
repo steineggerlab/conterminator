@@ -92,10 +92,10 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
     }
     std::vector<std::string> ranks = Util::split(par.lcaRanks, ":");
 
-    DBReader<unsigned int> reader(par.db2.c_str(), par.db2Index.c_str());
+    DBReader<unsigned int> reader(par.db2.c_str(), par.db2Index.c_str(), par.threads, DBReader<unsigned int>::USE_DATA|DBReader<unsigned int>::USE_INDEX);
     reader.open(DBReader<unsigned int>::LINEAR_ACCCESS);
 
-    DBWriter writer(par.db3.c_str(), par.db3Index.c_str(), par.threads);
+    DBWriter writer(par.db3.c_str(), par.db3Index.c_str(), par.threads, par.compressed, reader.getDbtype());
     writer.open();
 
     Debug(Debug::INFO) << "Loading NCBI taxonomy...\n";
@@ -150,7 +150,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
             speciesRange.reset();
             memset(taxaCounter, 0, taxListSize * sizeof(size_t));
             unsigned int key = reader.getDbKey(i);
-            char *data = reader.getData(i);
+            char *data = reader.getData(i, thread_idx);
             size_t length = reader.getSeqLens(i);
 
             if (length == 1) {

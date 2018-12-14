@@ -16,9 +16,9 @@ public:
         return static_cast<LocalParameters&>(LocalParameters::getInstance());
     }
 
-    std::vector<MMseqsParameter> conterminatorworkflow;
-    std::vector<MMseqsParameter> conterminatorSearch;
-    std::vector<MMseqsParameter> distanceton;
+    std::vector<MMseqsParameter*> conterminatorworkflow;
+    std::vector<MMseqsParameter*> conterminatorSearch;
+    std::vector<MMseqsParameter*> distanceton;
 private:
     LocalParameters() :
             Parameters(){
@@ -28,12 +28,12 @@ private:
         // strucclust
         conterminatorSearch = removeParameter(searchworkflow, PARAM_MAX_SEQS);
         conterminatorworkflow = combineList(conterminatorworkflow, conterminatorSearch);
-        conterminatorworkflow.push_back(PARAM_REMOVE_TMP_FILES);
-        conterminatorworkflow.push_back(PARAM_RUNNER);
+        conterminatorworkflow.push_back(&PARAM_REMOVE_TMP_FILES);
+        conterminatorworkflow.push_back(&PARAM_RUNNER);
         // distanceton
-        distanceton.push_back(PARAM_EXTRACT_MODE);
-        distanceton.push_back(PARAM_THREADS);
-        distanceton.push_back(PARAM_V);
+        distanceton.push_back(&PARAM_EXTRACT_MODE);
+        distanceton.push_back(&PARAM_THREADS);
+        distanceton.push_back(&PARAM_V);
     }
 
     LocalParameters(LocalParameters const&);
