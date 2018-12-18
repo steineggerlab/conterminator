@@ -19,9 +19,11 @@ struct RangEntry {
     unsigned int range;
     unsigned int kingdom;
     unsigned int species;
+    unsigned int id;
+
     RangEntry() {};
-    RangEntry(unsigned int range, unsigned int kingdom, unsigned int species) :
-            range(range), kingdom(kingdom), species(species) {}
+    RangEntry(unsigned int range, unsigned int kingdom, unsigned int species, unsigned int id) :
+            range(range), kingdom(kingdom), species(species), id(id) {}
 
     bool operator()(const RangEntry &lhs, const RangEntry &rhs) {
         if (lhs.range < rhs.range) return true;
@@ -29,6 +31,8 @@ struct RangEntry {
         if (lhs.kingdom < rhs.kingdom) return true;
         if (rhs.kingdom < lhs.kingdom) return false;
         if (lhs.species < rhs.species) return true;
+        if (rhs.species < lhs.species) return false;
+        if (lhs.id < rhs.id) return true;
         return false;
     }
 };
@@ -285,7 +289,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                         elements[elementIdx].overlaps = true;
                         int rangeIndex = speciesRange.findIndex(res.qStartPos, res.qEndPos);
                         elements[elementIdx].range = rangeIndex;
-                        RangEntry rangeQuery(rangeIndex, elements[elementIdx].ancestorTax, taxon);
+                        RangEntry rangeQuery(rangeIndex, elements[elementIdx].ancestorTax, taxon, res.dbKey);
                         const bool existsAlready = rangeEntry.find(rangeQuery) != rangeEntry.end();
                         if(existsAlready == false) {
                             rangeEntry.insert(rangeQuery);
