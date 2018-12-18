@@ -134,6 +134,10 @@ public:
 
 
     int findIndex(int low, int high){
+
+        if(ranges.size() == 0){
+            return -1;
+        }
         // check for overlaps between the intervals
         if(low > high){
             std::swap(low, high);
@@ -143,6 +147,9 @@ public:
         val.start = low;
         std::vector<Range>::iterator it;
         it = std::lower_bound(ranges.begin(), ranges.end(), val, Range::compareStart);
+        if(it == ranges.end()){
+            it--;
+        }
         bool overlap = checkOverlap(it->start, it->end, low, high);
         if(overlap == false && ranges.begin()!=it){
             --it;
