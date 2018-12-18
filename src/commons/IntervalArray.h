@@ -14,7 +14,24 @@
 class IntervalArray {
 
 public:
+    struct Range{
+        unsigned int index;
+        unsigned int start;
+        unsigned int end;
+        Range(){};
+        Range(unsigned int index, unsigned int start, unsigned int end)
+        : index(index), start(start), end(end)
+        {}
 
+        static bool compareStart(const Range &x, const Range &y){
+            return (x.start < y.start);
+        }
+
+        static bool compareEndStart(const Range &x, const Range &y){
+            return (x.start < y.end);
+        }
+
+    };
     IntervalArray(){
         const int size = 1;
         array=(unsigned char *)calloc(size, sizeof(unsigned char));
@@ -31,6 +48,7 @@ public:
     void reset(){
         int ceilMax = MathUtil::ceilIntDivision(std::max(1,maxSizeInByte), 8);
         memset(array, 0, ceilMax * sizeof(unsigned char));
+        ranges.clear();
         maxSizeInByte = 0;
     }
 
@@ -42,7 +60,7 @@ public:
 
     unsigned char getHighRest(unsigned int rest) {
         const unsigned char mask[8] = { 0xFF, 0x7F, 0x3F, 0x1F, 0x0F,0x07, 0x03, 0x01};
-         return mask[rest];
+        return mask[rest];
     }
 
 
@@ -51,7 +69,7 @@ public:
             std::swap(low, high);
         }
         //insert(array, low, high);
-        maxSizeInByte = std::max(high, maxSizeInByte + 1);
+        maxSizeInByte = std::max(high+1, maxSizeInByte + 1);
         int ceilMax = MathUtil::ceilIntDivision(maxSizeInByte, 8);
         if(ceilMax >= arraySizeInBytes){
             int prevSize = arraySizeInBytes;
@@ -78,6 +96,63 @@ public:
         }else{
             array[startPos] |= lowMask;
             array[endPos] |= highMask;
+        }
+    }
+
+    void buildRanges(){
+        bool started = false;
+        unsigned int startPos = 0;
+        unsigned int endPos = 0;
+        unsigned int index = 0;
+        for(int pos = 0; pos <= maxSizeInByte; pos++){
+            if(isSet(pos)  && started == false){
+                started = true;
+                startPos = pos;
+            }
+            if(isSet(pos)==false && started== true){
+                started = false;
+                endPos = pos;
+                ranges.push_back(Range(index, startPos, endPos-1));
+                index++;
+            }
+        }
+        if(started==true){
+            ranges.push_back(Range(index, startPos, maxSizeInByte-1));
+        }
+    }
+
+
+    bool checkOverlap(int i1Low, int i1High, int i2Low, int i2High)
+    {
+        return (i1Low <= i2High && i2Low<= i1High) ? true : false;
+    }
+
+
+    size_t getRangesSize(){
+        return ranges.size();
+    }
+
+
+    int findIndex(int low, int high){
+        // check for overlaps between the intervals
+        if(low > high){
+            std::swap(low, high);
+        }
+
+        Range val;
+        val.start = low;
+        std::vector<Range>::iterator it;
+        it = std::lower_bound(ranges.begin(), ranges.end(), val, Range::compareStart);
+        bool overlap = checkOverlap(it->start, it->end, low, high);
+        if(overlap == false && ranges.begin()!=it){
+            --it;
+            overlap = checkOverlap(it->start, it->end, low, high);
+        }
+
+        if(overlap == false){
+            return -1;
+        }else{
+            return it->index;
         }
     }
 
@@ -151,7 +226,12 @@ public:
     }
 
 
+    Range getRange(int index) {
+        return ranges[index];
+    }
+
 private:
+    std::vector<Range> ranges;
     unsigned char * array;
     int arraySizeInBytes;
     int maxSizeInByte;

@@ -9,11 +9,29 @@
 #include "Matcher.h"
 #include "IntervalTree.h"
 #include "IntervalArray.h"
+#include <set>
 
 #ifdef OPENMP
 #include <omp.h>
 #endif
 
+struct RangEntry {
+    unsigned int range;
+    unsigned int kingdom;
+    unsigned int species;
+    RangEntry() {};
+    RangEntry(unsigned int range, unsigned int kingdom, unsigned int species) :
+            range(range), kingdom(kingdom), species(species) {}
+
+    bool operator()(const RangEntry &lhs, const RangEntry &rhs) {
+        if (lhs.range < rhs.range) return true;
+        if (rhs.range < lhs.range) return false;
+        if (lhs.kingdom < rhs.kingdom) return true;
+        if (rhs.kingdom < lhs.kingdom) return false;
+        if (lhs.species < rhs.species) return true;
+        return false;
+    }
+};
 
 
 int multipletaxas(int argc, const char **argv, const Command& command) {
@@ -25,8 +43,11 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
 
     par.parseParameters(argc, argv, command, 3);
 
-//    int ints[][2] = {{4,6},
+
+//    int ints[][2] = {{1,2},
+//                     {4,6},
 //                     {15, 20},
+//                     {22, 25},
 //                     {10, 25},
 //                     {17, 19},
 //                     {5, 6},
@@ -39,13 +60,21 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
 //
 //    IntervalArray tree;
 //    tree.reset();
-//    for (int i = 0; i < 2; i++)
+//    for (int i = 0; i < 4; i++)
 //        tree.insert(ints[i][0], ints[i][1]);
 //    tree.print();
 //    std::cout << tree.doesOverlap(10,20) << std::endl;
 //    std::cout << tree.doesOverlap(34,28) << std::endl;
+//    tree.buildRanges();
+//    std::cout << tree.findIndex(3,5) << std::endl;
+//    std::cout << tree.findIndex(5,5) << std::endl;
+//    std::cout << tree.findIndex(23,24) << std::endl;
 //
-//
+//    std::cout << tree.findIndex(10,20) << std::endl;
+//    std::cout << tree.findIndex(16,19) << std::endl;
+//    std::cout << tree.findIndex(17,21) << std::endl;
+//    std::cout << tree.findIndex(7,8) << std::endl;
+
 //
 //    //int ints[][2] =  {{15,20} , {4,25}, {3,30}};
 //    tree.reset();
@@ -108,8 +137,14 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
     std::vector<std::string> taxlist = Util::split(par.taxonList, ",");
     const size_t taxListSize = taxlist.size();
     int* taxalist = new int[taxListSize];
+    int maxTaxa = 0;
     for (size_t i = 0; i < taxListSize; ++i) {
         taxalist[i] = Util::fast_atoi<int>(taxlist[i].c_str());
+        maxTaxa = std::max(taxalist[i], maxTaxa);
+    }
+    int* ancestorTax2int = new int[maxTaxa+1];
+    for (size_t i = 0; i < taxListSize; ++i) {
+        ancestorTax2int[taxalist[i]] = i;
     }
 
     std::vector<std::string> blacklist = Util::split(par.blacklist, ",");
@@ -122,10 +157,12 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
 
     struct TaxonInformation{
         TaxonInformation(int currTaxa, int ancestorTax, char * data) :
-            currTaxa(currTaxa), ancestorTax(ancestorTax), data(data){}
+                currTaxa(currTaxa), ancestorTax(ancestorTax), data(data), overlaps(false), range(-1){}
         int currTaxa;
         int ancestorTax;
         char * data;
+        bool overlaps;
+        int range;
     };
 #pragma omp parallel
     {
@@ -156,7 +193,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
             if (length == 1) {
                 continue;
             }
-
+            // find taxonomical information
             std::vector<int> taxa;
             while (*data != '\0') {
                 bool isAncestor = false;
@@ -208,68 +245,97 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
             int distinctTaxaCnt = 0;
             size_t maxTaxCnt = 0;
             int maxTaxId = -1;
-
-            for(size_t i = 0; i < taxListSize; i++){
-                bool hasTaxa = (taxaCounter[i] > 0);
+            // find max. taxa
+            for(size_t taxId = 0; taxId < taxListSize; taxId++){
+                bool hasTaxa = (taxaCounter[taxId] > 0);
                 distinctTaxaCnt += hasTaxa;
-                if(hasTaxa && taxaCounter[i] > maxTaxCnt){
-                    maxTaxCnt = taxaCounter[i];
-                    maxTaxId =  taxalist[i];
+                if(hasTaxa && taxaCounter[taxId] > maxTaxCnt){
+                    maxTaxCnt = taxaCounter[taxId];
+                    maxTaxId =  taxalist[taxId];
                 }
             }
-
-            if(distinctTaxaCnt > 1){
-                if(maxTaxId == -1){
+            // find max. taxa
+            if(distinctTaxaCnt > 1) {
+                if (maxTaxId == -1) {
                     Debug(Debug::WARNING) << "Max Tax Id: " << maxTaxId << "!\n";
-                    for(size_t i = 0; i < taxListSize; i++) {
+                    for (size_t i = 0; i < taxListSize; i++) {
                         Debug(Debug::WARNING) << taxaCounter[i] << "\n";
                     }
                 }
 
                 // fill up interval tree with elements
-                for(size_t i = 0 ; i < elements.size(); i++) {
-                    if(elements[i].ancestorTax != maxTaxId) {
-                        Matcher::result_t res = Matcher::parseAlignmentRecord(elements[i].data, true);
-//                        std::cout << res.qStartPos << "\t" << res.qEndPos << std::endl;
+                for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
+                    if (elements[elementIdx].ancestorTax != maxTaxId) {
+                        Matcher::result_t res = Matcher::parseAlignmentRecord(elements[elementIdx].data, true);
                         speciesRange.insert(res.qStartPos, res.qEndPos);
                     }
                 }
+                speciesRange.buildRanges();
+                int * rangSizes = new int[speciesRange.getRangesSize()*taxListSize];
+                memset(rangSizes, 0, speciesRange.getRangesSize() * taxListSize * sizeof(int));
+//
+                std::set<RangEntry, RangEntry> rangeEntry;
 //                speciesRange.print();
-                for(size_t i = 0 ; i < elements.size(); i++){
-                    size_t taxon = elements[i].currTaxa;
-                    Matcher::result_t res = Matcher::parseAlignmentRecord(elements[i].data, true);
-                    char * data = elements[i].data;
+                // fill range taxon array
+                for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
+                    size_t taxon = elements[elementIdx].currTaxa;
+                    Matcher::result_t res = Matcher::parseAlignmentRecord(elements[elementIdx].data, true);
                     bool overlapsWithOtherSpecie = speciesRange.doesOverlap(res.qStartPos, res.qEndPos);
-                    if(taxon != 0 && overlapsWithOtherSpecie == true){
-                        char * nextData = Util::skipLine(data);
-                        size_t dataSize = nextData - data;
-                        resultData.append(data, dataSize-1);
-                        resultData.push_back('\t');
-                        int len;
-
-                        TaxonNode* node = t.findNode(taxon);
-                        if(node == NULL){
-                            len = snprintf(buffer, 1024, "0\tno rank\tunclassified\n");
-                        }else{
-                            std::string lcaRanks = Util::implode(t.AtRanks(node, ranks), ':');
-                            if (ranks.empty() == false) {
-                                len = snprintf(buffer, 10000, "%d\t%d\t%s\t%s\n",
-                                               elements[i].ancestorTax, node->taxon, node->rank.c_str(), node->name.c_str());
-                            } else {
-                                len = snprintf(buffer, 10000, "%d\t%d\t%s\t%s\t%s\n",
-                                               elements[i].ancestorTax, node->taxon, node->rank.c_str(), node->name.c_str(), lcaRanks.c_str());
-                            }
+                    if (taxon != 0 && overlapsWithOtherSpecie == true) {
+                        elements[elementIdx].overlaps = true;
+                        int rangeIndex = speciesRange.findIndex(res.qStartPos, res.qEndPos);
+                        elements[elementIdx].range = rangeIndex;
+                        RangEntry rangeQuery(rangeIndex, elements[elementIdx].ancestorTax, taxon);
+                        const bool existsAlready = rangeEntry.find(rangeQuery) != rangeEntry.end();
+                        if(existsAlready == false) {
+                            rangeEntry.insert(rangeQuery);
+                            rangSizes[rangeIndex * taxListSize + ancestorTax2int[elements[elementIdx].ancestorTax]] += 1;
                         }
-                        if(len < 0){
-                            Debug(Debug::WARNING) << "Taxon record could not be written. Entry: " << i << "!\n";
-                            continue;
-                        }
-                        resultData.append(buffer, len);
                     } else {
                         continue;
                     }
-
                 }
+                // print stuff
+                for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
+                    Matcher::result_t res = Matcher::parseAlignmentRecord(elements[elementIdx].data, true);
+                    size_t taxon = elements[elementIdx].currTaxa;
+                    if(elements[elementIdx].overlaps){
+                        char *data = elements[elementIdx].data;
+                        char *nextData = Util::skipLine(data);
+                        size_t dataSize = nextData - data;
+                        resultData.append(data, dataSize - 1);
+                        resultData.push_back('\t');
+                        resultData.append(SSTR(elements[elementIdx].range));
+                        resultData.push_back('\t');
+                        IntervalArray::Range range = speciesRange.getRange(elements[elementIdx].range);
+                        resultData.append(SSTR(range.start));
+                        resultData.push_back('\t');
+                        resultData.append(SSTR(range.end));
+                        resultData.push_back('\t');
+                        // print ranges
+                        for(size_t taxIdx = 0; taxIdx < taxListSize; taxIdx++){
+                            resultData.append(SSTR(rangSizes[elements[elementIdx].range*taxListSize + taxIdx]));
+                            resultData.push_back('\t');
+                        }
+                        int len;
+                        TaxonNode *node = t.findNode(taxon);
+                        if (node == NULL) {
+                            len = snprintf(buffer, 1024, "0\tno rank\tunclassified\n");
+                        } else {
+                            std::string lcaRanks = Util::implode(t.AtRanks(node, ranks), ':');
+                            len = snprintf(buffer, 10000, "%d\t%d\t%s\t%s\n",
+                                           elements[elementIdx].ancestorTax, node->taxon, node->rank.c_str(),
+                                           node->name.c_str());
+
+                        }
+                        if (len < 0) {
+                            Debug(Debug::WARNING) << "Taxon record could not be written. Entry: " << elementIdx << "!\n";
+                            continue;
+                        }
+                        resultData.append(buffer, len);
+                    }
+                }
+                delete [] rangSizes;
             }
             writer.writeData(resultData.c_str(), resultData.size(), key, thread_idx);
         }
@@ -279,6 +345,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
     Debug(Debug::INFO) << "\n";
     delete[] taxalist;
     delete[] blackList;
+    delete[] ancestorTax2int;
     writer.close();
     reader.close();
     return EXIT_SUCCESS;
