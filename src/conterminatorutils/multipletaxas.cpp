@@ -167,8 +167,26 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
         char * data;
         bool overlaps;
         int range;
+        static bool compareByRange(const TaxonInformation &first, const TaxonInformation &second) {
+            if (first.range < second.range)
+                return true;
+            if (second.range < first.range)
+                return false;
+            if(first.ancestorTax < second.ancestorTax )
+                return true;
+            if(second.ancestorTax < first.ancestorTax )
+                return false;
+            if(first.currTaxa < second.currTaxa )
+                return true;
+            if(second.currTaxa < first.currTaxa )
+                return false;
+            return false;
+        }
     };
-#pragma omp parallel
+
+    size_t rangeWithSingleHit=0;
+    size_t totalRanges=0;
+#pragma omp parallel reduction (+: rangeWithSingleHit, totalRanges)
     {
         size_t * taxaCounter = new size_t[taxListSize];
         char *entry[255];
@@ -299,11 +317,28 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                         continue;
                     }
                 }
+                std::sort(elements.begin(), elements.end(), TaxonInformation::compareByRange);
                 // print stuff
+                bool hasSizeOne = false;
+                bool firstRange = true;
+                int taxaCount = 0;
+                int totalCount = 0;
+                int range = -1;
                 for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
                     Matcher::result_t res = Matcher::parseAlignmentRecord(elements[elementIdx].data, true);
                     size_t taxon = elements[elementIdx].currTaxa;
                     if(elements[elementIdx].overlaps){
+                        if(elements[elementIdx].range != range){
+                            if(taxaCount == 2 && totalCount >= 3 && hasSizeOne == true){
+                                rangeWithSingleHit++;
+                            }
+                            taxaCount = 0;
+                            range = elements[elementIdx].range;
+                            hasSizeOne = false;
+                            firstRange = true;
+                            totalCount = 0;
+                            totalRanges++;
+                        }
                         char *data = elements[elementIdx].data;
                         char *nextData = Util::skipLine(data);
                         size_t dataSize = nextData - data;
@@ -318,9 +353,14 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                         resultData.push_back('\t');
                         // print ranges
                         for(size_t taxIdx = 0; taxIdx < taxListSize; taxIdx++){
-                            resultData.append(SSTR(rangSizes[elements[elementIdx].range*taxListSize + taxIdx]));
+                            int size = rangSizes[elements[elementIdx].range*taxListSize + taxIdx];
+                            hasSizeOne = std::max(hasSizeOne, (firstRange && size == 1));
+                            taxaCount += (firstRange && size > 0);
+                            totalCount += (firstRange) ? size : 0;
+                            resultData.append(SSTR(size));
                             resultData.push_back('\t');
                         }
+                        firstRange = false;
                         int len;
                         TaxonNode *node = t.findNode(taxon);
                         if (node == NULL) {
@@ -339,6 +379,10 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                         resultData.append(buffer, len);
                     }
                 }
+                if(taxaCount == 2 && totalCount >= 3 && hasSizeOne == true){
+                    rangeWithSingleHit++;
+                    totalRanges++;
+                }
                 delete [] rangSizes;
             }
             writer.writeData(resultData.c_str(), resultData.size(), key, thread_idx);
@@ -347,6 +391,8 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
     }
 
     Debug(Debug::INFO) << "\n";
+    Debug(Debug::INFO) << "Potential conterminated ranges: " << totalRanges << "\n";
+    Debug(Debug::INFO) << "Highly likely conterminated ranges: " << rangeWithSingleHit << "\n";
     delete[] taxalist;
     delete[] blackList;
     delete[] ancestorTax2int;
