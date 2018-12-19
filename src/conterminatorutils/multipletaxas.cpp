@@ -340,8 +340,8 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                                 hasSizeOne = false;
                                 firstRange = true;
                                 totalCount = 0;
+                                totalRanges++;
                             }
-                            totalRanges++;
                             for(size_t taxIdx = 0; taxIdx < taxListSize; taxIdx++){
                                 int size = rangSizes[elements[elementIdx].range*taxListSize + taxIdx];
                                 hasSizeOne = std::max(hasSizeOne, (firstRange && size == 1));
