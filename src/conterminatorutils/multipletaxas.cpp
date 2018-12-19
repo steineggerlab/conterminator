@@ -347,8 +347,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                                 hasSizeOne = std::max(hasSizeOne, (firstRange && size == 1));
                                 taxaCount += (firstRange && size > 0);
                                 totalCount += (firstRange) ? size : 0;
-                                resultData.append(SSTR(size));
-                                resultData.push_back('\t');
+
                             }
                             firstRange = false;
                         }
