@@ -295,50 +295,76 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                 speciesRange.buildRanges();
                 int * rangSizes = new int[speciesRange.getRangesSize()*taxListSize];
                 memset(rangSizes, 0, speciesRange.getRangesSize() * taxListSize * sizeof(int));
-//
-                std::set<RangEntry, RangEntry> rangeEntry;
-//                speciesRange.print();
-                // fill range taxon array
-                for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
-                    size_t taxon = elements[elementIdx].currTaxa;
-                    Matcher::result_t res = Matcher::parseAlignmentRecord(elements[elementIdx].data, true);
-                    bool overlapsWithOtherSpecie = speciesRange.doesOverlap(res.qStartPos, res.qEndPos);
-                    if (taxon != 0 && overlapsWithOtherSpecie == true) {
-                        elements[elementIdx].overlaps = true;
-                        int rangeIndex = speciesRange.findIndex(res.qStartPos, res.qEndPos);
-                        elements[elementIdx].range = rangeIndex;
-                        RangEntry rangeQuery(rangeIndex, elements[elementIdx].ancestorTax, taxon, res.dbKey);
-                        const bool existsAlready = rangeEntry.find(rangeQuery) != rangeEntry.end();
-                        if(existsAlready == false) {
-                            rangeEntry.insert(rangeQuery);
-                            rangSizes[rangeIndex * taxListSize + ancestorTax2int[elements[elementIdx].ancestorTax]] += 1;
+                int * simpleRanges = new int[speciesRange.getRangesSize()];
+                memset(simpleRanges, 0, speciesRange.getRangesSize() * sizeof(int));
+
+                {
+                    std::set<RangEntry, RangEntry> rangeEntry;
+    //                speciesRange.print();
+                    // fill range taxon array
+                    for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
+                        size_t taxon = elements[elementIdx].currTaxa;
+                        Matcher::result_t res = Matcher::parseAlignmentRecord(elements[elementIdx].data, true);
+                        bool overlapsWithOtherSpecie = speciesRange.doesOverlap(res.qStartPos, res.qEndPos);
+                        if (taxon != 0 && overlapsWithOtherSpecie == true) {
+                            elements[elementIdx].overlaps = true;
+                            int rangeIndex = speciesRange.findIndex(res.qStartPos, res.qEndPos);
+                            elements[elementIdx].range = rangeIndex;
+                            RangEntry rangeQuery(rangeIndex, elements[elementIdx].ancestorTax, taxon, res.dbKey);
+                            const bool existsAlready = rangeEntry.find(rangeQuery) != rangeEntry.end();
+                            if(existsAlready == false) {
+                                rangeEntry.insert(rangeQuery);
+                                rangSizes[rangeIndex * taxListSize + ancestorTax2int[elements[elementIdx].ancestorTax]] += 1;
+                            }
+                        } else {
+                            continue;
                         }
-                    } else {
-                        continue;
                     }
                 }
                 std::sort(elements.begin(), elements.end(), TaxonInformation::compareByRange);
+                {
+                    bool hasSizeOne = false;
+                    bool firstRange = true;
+                    int taxaCount = 0;
+                    int totalCount = 0;
+                    int range = -1;
+                    for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
+                        if (elements[elementIdx].overlaps) {
+                            if (elements[elementIdx].range != range) {
+                                if (taxaCount == 2 && totalCount >= 3 && hasSizeOne == true) {
+                                    rangeWithSingleHit++;
+                                    simpleRanges[range] = 1;
+                                }
+                                taxaCount = 0;
+                                range = elements[elementIdx].range;
+                                hasSizeOne = false;
+                                firstRange = true;
+                                totalCount = 0;
+                            }
+                            totalRanges++;
+                            for(size_t taxIdx = 0; taxIdx < taxListSize; taxIdx++){
+                                int size = rangSizes[elements[elementIdx].range*taxListSize + taxIdx];
+                                hasSizeOne = std::max(hasSizeOne, (firstRange && size == 1));
+                                taxaCount += (firstRange && size > 0);
+                                totalCount += (firstRange) ? size : 0;
+                                resultData.append(SSTR(size));
+                                resultData.push_back('\t');
+                            }
+                            firstRange = false;
+                        }
+                    }
+                    if(taxaCount == 2 && totalCount >= 3 && hasSizeOne == true){
+                        simpleRanges[range] = 1;
+                        rangeWithSingleHit++;
+                        totalRanges++;
+                    }
+                }
+
                 // print stuff
-                bool hasSizeOne = false;
-                bool firstRange = true;
-                int taxaCount = 0;
-                int totalCount = 0;
-                int range = -1;
                 for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
                     Matcher::result_t res = Matcher::parseAlignmentRecord(elements[elementIdx].data, true);
                     size_t taxon = elements[elementIdx].currTaxa;
                     if(elements[elementIdx].overlaps){
-                        if(elements[elementIdx].range != range){
-                            if(taxaCount == 2 && totalCount >= 3 && hasSizeOne == true){
-                                rangeWithSingleHit++;
-                            }
-                            taxaCount = 0;
-                            range = elements[elementIdx].range;
-                            hasSizeOne = false;
-                            firstRange = true;
-                            totalCount = 0;
-                            totalRanges++;
-                        }
                         char *data = elements[elementIdx].data;
                         char *nextData = Util::skipLine(data);
                         size_t dataSize = nextData - data;
@@ -351,16 +377,15 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                         resultData.push_back('\t');
                         resultData.append(SSTR(range.end));
                         resultData.push_back('\t');
+                        resultData.append(SSTR(simpleRanges[elements[elementIdx].range]));
+                        resultData.push_back('\t');
+
                         // print ranges
                         for(size_t taxIdx = 0; taxIdx < taxListSize; taxIdx++){
                             int size = rangSizes[elements[elementIdx].range*taxListSize + taxIdx];
-                            hasSizeOne = std::max(hasSizeOne, (firstRange && size == 1));
-                            taxaCount += (firstRange && size > 0);
-                            totalCount += (firstRange) ? size : 0;
                             resultData.append(SSTR(size));
                             resultData.push_back('\t');
                         }
-                        firstRange = false;
                         int len;
                         TaxonNode *node = t.findNode(taxon);
                         if (node == NULL) {
@@ -379,11 +404,8 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                         resultData.append(buffer, len);
                     }
                 }
-                if(taxaCount == 2 && totalCount >= 3 && hasSizeOne == true){
-                    rangeWithSingleHit++;
-                    totalRanges++;
-                }
                 delete [] rangSizes;
+                delete [] simpleRanges;
             }
             writer.writeData(resultData.c_str(), resultData.size(), key, thread_idx);
         }
