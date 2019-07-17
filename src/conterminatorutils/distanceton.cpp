@@ -50,6 +50,7 @@ int measureDistanceToN(Parameters &par) {
     Debug(Debug::INFO) << "Start writing file to " << par.db4 << "\n";
     DBWriter dbw(par.db4.c_str(), par.db4Index.c_str(), static_cast<unsigned int>(par.threads), par.compressed, alndbr.getDbtype());
     dbw.open();
+    Debug::Progress progress(alndbr.getSize());
 
     const char newline = '\n';
 #pragma omp parallel
@@ -63,8 +64,7 @@ int measureDistanceToN(Parameters &par) {
         results.reserve(300);
 #pragma omp for schedule(dynamic, 1000)
         for (size_t i = 0; i < alndbr.getSize(); i++) {
-            Debug::printProgress(i);
-
+            progress.updateProgress();
             unsigned int queryKey = alndbr.getDbKey(i);
             char *qSeq = NULL;
             size_t qSeqLen;
@@ -140,7 +140,7 @@ void findLeftAndRightPos(int startPos, int endPos, char *seq, int &leftNPos, int
 
 int distanceton(int argc, const char **argv, const Command& command) {
     Parameters& par = Parameters::getInstance();
-    par.parseParameters(argc, argv, command, 4);
+    par.parseParameters(argc, argv, command,  true, 0, 0);
 
     // never allow deletions
     par.allowDeletion = false;

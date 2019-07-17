@@ -23,15 +23,9 @@ DB="$1"
 TMP_PATH="$3"
 
 
-if notExists "$TMP_PATH/db_rev"; then
-    # shellcheck disable=SC2086
-    "$MMSEQS" extractframes "$DB" "$TMP_PATH/db_rev"  ${EXTRACT_FRAMES_PAR} \
-        || fail "extractframes step died"
-fi
-
 if notExists "$TMP_PATH/db_rev_split"; then
     # shellcheck disable=SC2086
-    "$MMSEQS" splitsequence "$TMP_PATH/db_rev" "$TMP_PATH/db_rev_split"  ${SPLITSEQ_PAR} \
+    "$MMSEQS" splitsequence "$DB" "$TMP_PATH/db_rev_split"  ${SPLITSEQ_PAR} \
         || fail "splitsequence step died"
 fi
 
@@ -59,14 +53,19 @@ if notExists "$TMP_PATH/aln_kingdom"; then
         || fail "rescorediagonal step died"
 fi
 
+if notExists "$2_kingdom.tsv"; then
+    # shellcheck disable=SC2086
+    $RUNNER "$MMSEQS" createtsv "${DB}" "${DB}" "$TMP_PATH/aln_kingdom" "$2_kingdom.tsv" \
+        || fail "createtsv step died"
+fi
+
 if notExists "$4/aln_offset_distance"; then
     # shellcheck disable=SC2086
     "$MMSEQS" distanceton  "${DB}" "${DB}" "$TMP_PATH/aln_kingdom" "$TMP_PATH/aln_kingdom_distance" ${DISTANCETON_PAR}  \
         || fail "distanceton step died"
 fi
 
-(mv -f "$TMP_PATH/aln_kingdom_distance" "$2" && mv -f "$TMP_PATH/aln_kingdom_distance.index" "$2.index") \
-    || fail "Could not move result to $2"
+
 
 if [ -n "$REMOVE_TMP" ]; then
   echo "Remove temporary files"

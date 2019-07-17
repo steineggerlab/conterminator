@@ -45,7 +45,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
     // unclassified sequences , other sequences,  artifical sequences, retro virus, environmental samples
     par.blacklist = "12908,28384,81077,11632,340016,61964,48479,48510";
 
-    par.parseParameters(argc, argv, command, 3);
+    par.parseParameters(argc, argv, command, true, 0, 0);
 
 
 //    int ints[][2] = {{1,2},
@@ -132,7 +132,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
     writer.open();
 
     Debug(Debug::INFO) << "Loading NCBI taxonomy...\n";
-    NcbiTaxonomy t(namesFile, nodesFile, mergedFile, delnodesFile);
+    NcbiTaxonomy t(namesFile, nodesFile, mergedFile);
 
     Debug(Debug::INFO) << "Add taxonomy information ...\n";
 
@@ -186,10 +186,12 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
 
     size_t rangeWithSingleHit=0;
     size_t totalRanges=0;
+    Debug::Progress progress(reader.getSize());
+
 #pragma omp parallel reduction (+: rangeWithSingleHit, totalRanges)
     {
         size_t * taxaCounter = new size_t[taxListSize];
-        char *entry[255];
+        const char *entry[255];
         char buffer[10000];
         unsigned int thread_idx = 0;
         std::string resultData;
@@ -203,7 +205,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
 
 #pragma omp for schedule(dynamic, 10)
         for (size_t i = 0; i < reader.getSize(); ++i) {
-            Debug::printProgress(i);
+            progress.updateProgress();
             resultData.clear();
             elements.clear();
             speciesRange.reset();
@@ -386,13 +388,13 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                             resultData.push_back('\t');
                         }
                         int len;
-                        TaxonNode *node = t.findNode(taxon);
+                        const TaxonNode *node = t.taxonNode(taxon);
                         if (node == NULL) {
                             len = snprintf(buffer, 1024, "0\tno rank\tunclassified\n");
                         } else {
                             std::string lcaRanks = Util::implode(t.AtRanks(node, ranks), ':');
                             len = snprintf(buffer, 10000, "%d\t%d\t%s\t%s\n",
-                                           elements[elementIdx].ancestorTax, node->taxon, node->rank.c_str(),
+                                           elements[elementIdx].ancestorTax, node->taxId, node->rank.c_str(),
                                            node->name.c_str());
 
                         }
