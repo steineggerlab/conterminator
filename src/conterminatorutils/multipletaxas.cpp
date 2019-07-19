@@ -1,10 +1,8 @@
-#include "NcbiTaxonomy.h"
+#include "multipletaxas.h"
 #include "Parameters.h"
-#include "DBWriter.h"
 #include "FileUtil.h"
 #include "Debug.h"
 #include "Util.h"
-#include "filterdb.h"
 #include <algorithm>
 #include "Matcher.h"
 #include "IntervalTree.h"
@@ -15,29 +13,6 @@
 #include <omp.h>
 #endif
 
-struct RangEntry {
-    unsigned int range;
-    unsigned int kingdom;
-    unsigned int species;
-    unsigned int id;
-
-    RangEntry() {};
-    RangEntry(unsigned int range, unsigned int kingdom, unsigned int species, unsigned int id) :
-            range(range), kingdom(kingdom), species(species), id(id) {}
-
-    bool operator()(const RangEntry &lhs, const RangEntry &rhs) {
-        if (lhs.range < rhs.range) return true;
-        if (rhs.range < lhs.range) return false;
-        if (lhs.kingdom < rhs.kingdom) return true;
-        if (rhs.kingdom < lhs.kingdom) return false;
-        if (lhs.species < rhs.species) return true;
-        if (rhs.species < lhs.species) return false;
-        if (lhs.id < rhs.id) return true;
-        return false;
-    }
-};
-
-
 int multipletaxas(int argc, const char **argv, const Command& command) {
     Parameters& par = Parameters::getInstance();
     // bacteria, archaea, eukaryotic, virus
@@ -46,53 +21,6 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
     par.blacklist = "12908,28384,81077,11632,340016,61964,48479,48510";
 
     par.parseParameters(argc, argv, command, true, 0, 0);
-
-
-//    int ints[][2] = {{1,2},
-//                     {4,6},
-//                     {15, 20},
-//                     {22, 25},
-//                     {10, 25},
-//                     {17, 19},
-//                     {5, 6},
-//                     {12, 15},
-//                     {12, 16},
-//                     {12, 17},
-//                     {12, 18},
-//                     {12, 19},
-//                     {30, 39}};
-//
-//    IntervalArray tree;
-//    tree.reset();
-//    for (int i = 0; i < 4; i++)
-//        tree.insert(ints[i][0], ints[i][1]);
-//    tree.print();
-//    std::cout << tree.doesOverlap(10,20) << std::endl;
-//    std::cout << tree.doesOverlap(34,28) << std::endl;
-//    tree.buildRanges();
-//    std::cout << tree.findIndex(3,5) << std::endl;
-//    std::cout << tree.findIndex(5,5) << std::endl;
-//    std::cout << tree.findIndex(23,24) << std::endl;
-//
-//    std::cout << tree.findIndex(10,20) << std::endl;
-//    std::cout << tree.findIndex(16,19) << std::endl;
-//    std::cout << tree.findIndex(17,21) << std::endl;
-//    std::cout << tree.findIndex(7,8) << std::endl;
-
-//
-//    //int ints[][2] =  {{15,20} , {4,25}, {3,30}};
-//    tree.reset();
-//    int n = sizeof(ints)/sizeof(ints[0]);
-//    for (int i = 0; i < n; i++)
-//        tree.insert(ints[i][0], ints[i][1]);
-//    tree.print();
-//    std::cout << tree.doesOverlap(26,27) << std::endl;
-//    std::cout << tree.doesOverlap(1,2) << std::endl;
-//    std::cout << tree.doesOverlap(15,20) << std::endl;
-//    std::cout << tree.doesOverlap(14,20) << std::endl;
-//    std::cout << tree.doesOverlap(14,19) << std::endl;
-//    std::cout << tree.doesOverlap(34,28) << std::endl;
-//    std::cout << "New tree" << std::endl;
 
     std::string nodesFile = par.db1 + "_nodes.dmp";
     std::string namesFile = par.db1 + "_names.dmp";
@@ -138,51 +66,26 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
 
     // a few NCBI taxa are blacklisted by default, they contain unclassified sequences (e.g. metagenomes) or other sequences (e.g. plasmids)
     // if we do not remove those, a lot of sequences would be classified as Root, even though they have a sensible LCA
-    std::vector<std::string> taxlist = Util::split(par.taxonList, ",");
-    const size_t taxListSize = taxlist.size();
-    int* taxalist = new int[taxListSize];
+    std::vector<std::string> taxlistStr = Util::split(par.taxonList, ",");
+    std::vector<int> taxonList;
     int maxTaxa = 0;
-    for (size_t i = 0; i < taxListSize; ++i) {
-        taxalist[i] = Util::fast_atoi<int>(taxlist[i].c_str());
-        maxTaxa = std::max(taxalist[i], maxTaxa);
+    for (size_t i = 0; i < taxlistStr.size(); ++i) {
+        taxonList.push_back(Util::fast_atoi<int>(taxlistStr[i].c_str()));
+        maxTaxa = std::max(taxonList[i], maxTaxa);
     }
     int* ancestorTax2int = new int[maxTaxa+1];
-    for (size_t i = 0; i < taxListSize; ++i) {
-        ancestorTax2int[taxalist[i]] = i;
+    for (size_t i = 0; i < taxonList.size(); ++i) {
+        ancestorTax2int[taxonList[i]] = i;
     }
 
-    std::vector<std::string> blacklist = Util::split(par.blacklist, ",");
-    const size_t blackListSize = blacklist.size();
-    int* blackList = new int[blackListSize];
-    for (size_t i = 0; i < blackListSize; ++i) {
-        int currTaxa = Util::fast_atoi<int>(blacklist[i].c_str());
-        blackList[i] = currTaxa;
+    std::vector<std::string> blacklistStr = Util::split(par.blacklist, ",");
+    std::vector<int> blackList;
+    for (size_t i = 0; i <  blacklistStr.size(); ++i) {
+        int currTaxa = Util::fast_atoi<int>(blacklistStr[i].c_str());
+        blackList.push_back(currTaxa);
     }
 
-    struct TaxonInformation{
-        TaxonInformation(int currTaxa, int ancestorTax, char * data) :
-                currTaxa(currTaxa), ancestorTax(ancestorTax), data(data), overlaps(false), range(-1){}
-        int currTaxa;
-        int ancestorTax;
-        char * data;
-        bool overlaps;
-        int range;
-        static bool compareByRange(const TaxonInformation &first, const TaxonInformation &second) {
-            if (first.range < second.range)
-                return true;
-            if (second.range < first.range)
-                return false;
-            if(first.ancestorTax < second.ancestorTax )
-                return true;
-            if(second.ancestorTax < first.ancestorTax )
-                return false;
-            if(first.currTaxa < second.currTaxa )
-                return true;
-            if(second.currTaxa < first.currTaxa )
-                return false;
-            return false;
-        }
-    };
+
 
     size_t rangeWithSingleHit=0;
     size_t totalRanges=0;
@@ -190,14 +93,14 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
 
 #pragma omp parallel reduction (+: rangeWithSingleHit, totalRanges)
     {
-        size_t * taxaCounter = new size_t[taxListSize];
-        const char *entry[255];
+
+        size_t * taxaCounter = new size_t[taxonList.size()];
         char buffer[10000];
         unsigned int thread_idx = 0;
         std::string resultData;
         resultData.reserve(4096);
-        std::vector<TaxonInformation> elements;
         IntervalArray speciesRange;
+        std::vector<Multipletaxas::TaxonInformation> elements;
 
 #ifdef OPENMP
         thread_idx = (unsigned int) omp_get_thread_num();
@@ -209,7 +112,7 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
             resultData.clear();
             elements.clear();
             speciesRange.reset();
-            memset(taxaCounter, 0, taxListSize * sizeof(size_t));
+            memset(taxaCounter, 0, taxonList.size() * sizeof(size_t));
             unsigned int key = reader.getDbKey(i);
             char *data = reader.getData(i, thread_idx);
             size_t length = reader.getSeqLens(i);
@@ -219,70 +122,24 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
             }
             // find taxonomical information
             std::vector<int> taxa;
-            while (*data != '\0') {
-                bool isAncestor = false;
-                const size_t columns = Util::getWordsOfLine(data, entry, 255);
-                if (columns == 0) {
-                    Debug(Debug::WARNING) << "Empty entry: " << i << "!";
-                    data = Util::skipLine(data);
-                    continue;
-                }
-                unsigned int id = Util::fast_atoi<unsigned int>(entry[0]);
-                std::pair<unsigned int, unsigned int> val;
-                val.first = id;
-                std::vector<std::pair<unsigned int, unsigned int>>::iterator mappingIt = std::upper_bound(
-                        mapping.begin(), mapping.end(), val, ffindexFilter::compareToFirstInt);
+            Multipletaxas::assignTaxonomy(elements, data, mapping, t, taxonList, blackList, taxaCounter);
 
-                if (mappingIt->first != val.first) {
-//                    Debug(Debug::WARNING) << "No taxon mapping provided for id " << id << "\n";
-                    data = Util::skipLine(data);
-                    continue;
-                }
-                unsigned int taxon = mappingIt->second;
-                if (taxon == 0) {
-                    goto next;
-                }
-                // remove blacklisted taxa
-                for (size_t j = 0; j < blackListSize; ++j) {
-                    if (t.IsAncestor(blackList[j], taxon)) {
-                        goto next;
-                    }
-                }
-
-                size_t j;
-                for ( j = 0; j < taxListSize ; ++j) {
-                    bool isTaxaAncestor = t.IsAncestor(taxalist[j], taxon);
-                    taxaCounter[j] += isTaxaAncestor;
-                    isAncestor = std::max(isAncestor, isTaxaAncestor);
-                    if(isAncestor==true){
-                        break;
-                    }
-                }
-                if(isAncestor){
-                    elements.push_back(TaxonInformation(taxon, taxalist[j], data));
-                }else{
-                    elements.push_back(TaxonInformation(taxon, 0, data));
-                }
-                next:
-                data = Util::skipLine(data);
-            }
             int distinctTaxaCnt = 0;
             size_t maxTaxCnt = 0;
             int maxTaxId = -1;
             // find max. taxa
-            for(size_t taxId = 0; taxId < taxListSize; taxId++){
+            for(size_t taxId = 0; taxId < taxonList.size(); taxId++){
                 bool hasTaxa = (taxaCounter[taxId] > 0);
                 distinctTaxaCnt += hasTaxa;
                 if(hasTaxa && taxaCounter[taxId] > maxTaxCnt){
                     maxTaxCnt = taxaCounter[taxId];
-                    maxTaxId =  taxalist[taxId];
+                    maxTaxId =  taxonList[taxId];
                 }
             }
-            // find max. taxa
             if(distinctTaxaCnt > 1) {
                 if (maxTaxId == -1) {
                     Debug(Debug::WARNING) << "Max Tax Id: " << maxTaxId << "!\n";
-                    for (size_t i = 0; i < taxListSize; i++) {
+                    for (size_t i = 0; i < taxonList.size(); i++) {
                         Debug(Debug::WARNING) << taxaCounter[i] << "\n";
                     }
                 }
@@ -295,13 +152,13 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                     }
                 }
                 speciesRange.buildRanges();
-                int * rangSizes = new int[speciesRange.getRangesSize()*taxListSize];
-                memset(rangSizes, 0, speciesRange.getRangesSize() * taxListSize * sizeof(int));
+                int * rangSizes = new int[speciesRange.getRangesSize()*taxonList.size()];
+                memset(rangSizes, 0, speciesRange.getRangesSize() * taxonList.size() * sizeof(int));
                 int * simpleRanges = new int[speciesRange.getRangesSize()];
                 memset(simpleRanges, 0, speciesRange.getRangesSize() * sizeof(int));
 
                 {
-                    std::set<RangEntry, RangEntry> rangeEntry;
+                    std::set<Multipletaxas::RangEntry, Multipletaxas::RangEntry> rangeEntry;
     //                speciesRange.print();
                     // fill range taxon array
                     for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
@@ -312,18 +169,18 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                             elements[elementIdx].overlaps = true;
                             int rangeIndex = speciesRange.findIndex(res.qStartPos, res.qEndPos);
                             elements[elementIdx].range = rangeIndex;
-                            RangEntry rangeQuery(rangeIndex, elements[elementIdx].ancestorTax, taxon, res.dbKey);
+                            Multipletaxas::RangEntry rangeQuery(rangeIndex, elements[elementIdx].ancestorTax, taxon, res.dbKey);
                             const bool existsAlready = rangeEntry.find(rangeQuery) != rangeEntry.end();
                             if(existsAlready == false) {
                                 rangeEntry.insert(rangeQuery);
-                                rangSizes[rangeIndex * taxListSize + ancestorTax2int[elements[elementIdx].ancestorTax]] += 1;
+                                rangSizes[rangeIndex * taxonList.size() + ancestorTax2int[elements[elementIdx].ancestorTax]] += 1;
                             }
                         } else {
                             continue;
                         }
                     }
                 }
-                std::sort(elements.begin(), elements.end(), TaxonInformation::compareByRange);
+                std::sort(elements.begin(), elements.end(), Multipletaxas::TaxonInformation::compareByRange);
                 {
                     bool hasSizeOne = false;
                     bool firstRange = true;
@@ -344,8 +201,8 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                                 totalCount = 0;
                                 totalRanges++;
                             }
-                            for(size_t taxIdx = 0; taxIdx < taxListSize; taxIdx++){
-                                int size = rangSizes[elements[elementIdx].range*taxListSize + taxIdx];
+                            for(size_t taxIdx = 0; taxIdx < taxonList.size(); taxIdx++){
+                                int size = rangSizes[elements[elementIdx].range*taxonList.size() + taxIdx];
                                 hasSizeOne = std::max(hasSizeOne, (firstRange && size == 1));
                                 taxaCount += (firstRange && size > 0);
                                 totalCount += (firstRange) ? size : 0;
@@ -382,8 +239,8 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
                         resultData.push_back('\t');
 
                         // print ranges
-                        for(size_t taxIdx = 0; taxIdx < taxListSize; taxIdx++){
-                            int size = rangSizes[elements[elementIdx].range*taxListSize + taxIdx];
+                        for(size_t taxIdx = 0; taxIdx < taxonList.size(); taxIdx++){
+                            int size = rangSizes[elements[elementIdx].range*taxonList.size() + taxIdx];
                             resultData.append(SSTR(size));
                             resultData.push_back('\t');
                         }
@@ -416,8 +273,6 @@ int multipletaxas(int argc, const char **argv, const Command& command) {
     Debug(Debug::INFO) << "\n";
     Debug(Debug::INFO) << "Potential conterminated ranges: " << totalRanges << "\n";
     Debug(Debug::INFO) << "Highly likely conterminated ranges: " << rangeWithSingleHit << "\n";
-    delete[] taxalist;
-    delete[] blackList;
     delete[] ancestorTax2int;
     writer.close();
     reader.close();
