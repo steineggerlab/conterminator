@@ -9,7 +9,7 @@
 #include <utility>
 #include <list>
 #include <iostream>
-
+#include <string.h>
 
 class IntervalArray {
 

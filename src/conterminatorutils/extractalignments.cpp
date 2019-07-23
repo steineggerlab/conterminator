@@ -89,8 +89,6 @@ int extractalignments(int argc, const char **argv, const Command& command) {
 
     Debug(Debug::INFO) << "Add taxonomy information ...\n";
 
-
-
     // a few NCBI taxa are blacklisted by default, they contain unclassified sequences (e.g. metagenomes) or other sequences (e.g. plasmids)
     // if we do not remove those, a lot of sequences would be classified as Root, even though they have a sensible LCA
     std::vector<std::string> taxlistStr = Util::split(par.taxonList, ",");
@@ -155,19 +153,45 @@ int extractalignments(int argc, const char **argv, const Command& command) {
             // find taxonomical information
             std::vector<int> taxa;
             Multipletaxas::assignTaxonomy(elements, data, mapping, t, taxonList, blackList, taxaCounter);
-
+            std::sort(elements.begin(), elements.end(), Multipletaxas::TaxonInformation::compareByTaxAndStart);
             int distinctTaxaCnt = 0;
-            size_t maxTaxCnt = 0;
-            unsigned int maxTaxId = UINT_MAX;
+            //size_t maxTaxCnt = 0;
+            //unsigned int maxTaxId = UINT_MAX;
+            for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
+            }
             // find max. taxa
             for (size_t taxId = 0; taxId < taxonList.size(); taxId++) {
                 bool hasTaxa = (taxaCounter[taxId] > 0);
                 distinctTaxaCnt += hasTaxa;
-                if (hasTaxa && taxaCounter[taxId] > maxTaxCnt) {
-                    maxTaxCnt = taxaCounter[taxId];
-                    maxTaxId = taxonList[taxId];
-                }
             }
+            // compute how much the distinct taxon coverage. The maximal taxa is contaminated by the minimal taxa
+            int prevTaxId = -1;
+            size_t currTaxCnt = 0;
+            size_t maxTaxCnt = 0;
+            int prevEnd = 0;
+            unsigned int maxTaxId = UINT_MAX;
+            for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
+                if(elements[elementIdx].ancestorTax == 0){
+                    continue;
+                }
+                if(prevTaxId != elements[elementIdx].ancestorTax){
+                    if(currTaxCnt > maxTaxCnt){
+                        maxTaxId = prevTaxId;
+                        maxTaxCnt = currTaxCnt;
+                    }
+                    prevEnd = -1;
+                    currTaxCnt = 0;
+                }
+                if(elements[elementIdx].start > prevEnd) {
+                    currTaxCnt += (elements[elementIdx].end - elements[elementIdx].start);
+                }
+                prevTaxId = elements[elementIdx].ancestorTax;
+                prevEnd = elements[elementIdx].end;
+            }
+            if(currTaxCnt > maxTaxCnt){
+                maxTaxId = prevTaxId;
+            }
+
             // find max. taxa
             // reportDistinctTaxa == 2
             if (distinctTaxaCnt == reportDistinctTaxa) {
@@ -387,9 +411,6 @@ int extractalignments(int argc, const char **argv, const Command& command) {
     }
 
 
-    Debug(Debug::INFO) << "\n";
-    Debug(Debug::INFO) << "Potential conterminated ranges: " << totalRanges << "\n";
-    Debug(Debug::INFO) << "Highly likely conterminated ranges: " << rangeWithSingleHit << "\n";
     delete[] ancestorTax2int;
     writer.close();
     reader.close();

@@ -37,10 +37,12 @@ public:
     };
 
     struct TaxonInformation{
-        TaxonInformation(int currTaxa, int ancestorTax, char * data) :
-                currTaxa(currTaxa), ancestorTax(ancestorTax), data(data), overlaps(false), range(-1){}
+        TaxonInformation(int currTaxa, int ancestorTax, int start, int end, char * data) :
+                currTaxa(currTaxa), ancestorTax(ancestorTax), start(start), end(end), data(data), overlaps(false), range(-1){}
         int currTaxa;
         int ancestorTax;
+        int start;
+        int end;
         char * data;
         bool overlaps;
         int range;
@@ -52,6 +54,22 @@ public:
             if(first.ancestorTax < second.ancestorTax )
                 return true;
             if(second.ancestorTax < first.ancestorTax )
+                return false;
+            if(first.currTaxa < second.currTaxa )
+                return true;
+            if(second.currTaxa < first.currTaxa )
+                return false;
+            return false;
+        }
+
+        static bool compareByTaxAndStart(const TaxonInformation &first, const TaxonInformation &second) {
+            if (first.ancestorTax < second.ancestorTax)
+                return true;
+            if (second.ancestorTax < first.ancestorTax)
+                return false;
+            if(first.start < second.start )
+                return true;
+            if(second.start < first.start )
                 return false;
             if(first.currTaxa < second.currTaxa )
                 return true;
@@ -111,9 +129,11 @@ public:
                 }
             }
             if (isAncestor) {
-                elements.push_back(TaxonInformation(taxon, taxonList[j], data));
+                int startPos = Util::fast_atoi<int>(entry[4]);
+                int endPos   = Util::fast_atoi<int>(entry[5]);
+                elements.push_back(TaxonInformation(taxon, taxonList[j], std::min(startPos, endPos), std::max(startPos, endPos), data));
             } else {
-                elements.push_back(TaxonInformation(taxon, 0, data));
+                elements.push_back(TaxonInformation(taxon, 0, -1, -1, data));
             }
             next:
             data = Util::skipLine(data);
