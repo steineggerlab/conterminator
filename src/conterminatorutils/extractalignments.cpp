@@ -109,9 +109,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
         int currTaxa = Util::fast_atoi<int>(blacklistStr[i].c_str());
         blackList.push_back(currTaxa);
     }
-
-    size_t rangeWithSingleHit = 0;
-    size_t totalRanges = 0;
+    
 
     IntervalTree<size_t, unsigned int>::interval_vector allRanges;
     Debug::Progress progress(reader.getSize());
@@ -156,7 +154,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
             std::sort(elements.begin(), elements.end(), Multipletaxas::TaxonInformation::compareByTaxAndStart);
             int distinctTaxaCnt = 0;
             //size_t maxTaxCnt = 0;
-            //unsigned int maxTaxId = UINT_MAX;
+            //unsigned int maxTaxAncestor = UINT_MAX;
             for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
             }
             // find max. taxa
@@ -169,14 +167,15 @@ int extractalignments(int argc, const char **argv, const Command& command) {
             size_t currTaxCnt = 0;
             size_t maxTaxCnt = 0;
             int prevEnd = 0;
-            unsigned int maxTaxId = UINT_MAX;
+            unsigned int maxTaxAncestor = UINT_MAX;
+
             for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
                 if(elements[elementIdx].ancestorTax == 0){
                     continue;
                 }
                 if(prevTaxId != elements[elementIdx].ancestorTax){
                     if(currTaxCnt > maxTaxCnt){
-                        maxTaxId = prevTaxId;
+                        maxTaxAncestor = prevTaxId;
                         maxTaxCnt = currTaxCnt;
                     }
                     prevEnd = -1;
@@ -189,14 +188,14 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                 prevEnd = elements[elementIdx].end;
             }
             if(currTaxCnt > maxTaxCnt){
-                maxTaxId = prevTaxId;
+                maxTaxAncestor = prevTaxId;
             }
 
             // find max. taxa
             // reportDistinctTaxa == 2
             if (distinctTaxaCnt == reportDistinctTaxa) {
-                if (maxTaxId == UINT_MAX) {
-                    Debug(Debug::WARNING) << "Max Tax Id: " << maxTaxId << "!\n";
+                if (maxTaxAncestor == UINT_MAX) {
+                    Debug(Debug::WARNING) << "Max Tax Id: " << maxTaxAncestor << "!\n";
                     for (size_t i = 0; i < taxonList.size(); i++) {
                         Debug(Debug::WARNING) << taxaCounter[i] << "\n";
                     }
@@ -204,19 +203,19 @@ int extractalignments(int argc, const char **argv, const Command& command) {
 
                 // fill up interval tree with elements
                 for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
-                    if (static_cast<unsigned int>(elements[elementIdx].ancestorTax) != maxTaxId) {
+                    if (static_cast<unsigned int>(elements[elementIdx].ancestorTax) != maxTaxAncestor) {
                         Matcher::result_t res = Matcher::parseAlignmentRecord(elements[elementIdx].data, true);
                         speciesRange.insert(res.qStartPos, res.qEndPos);
                     }
                 }
 
-                // fill up interval tree with elements of minimal taxon
+                // pick conterminated ranges
                 for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
-                    if (static_cast<unsigned int>(elements[elementIdx].ancestorTax) != maxTaxId) {
+                    if (static_cast<unsigned int>(elements[elementIdx].ancestorTax) != maxTaxAncestor) {
                         Matcher::result_t res = Matcher::parseAlignmentRecord(elements[elementIdx].data, true);
                         bool overlapsWithOtherSpecie = speciesRange.doesOverlap(res.qStartPos, res.qEndPos);
                         if(overlapsWithOtherSpecie == true){
-                            if (maxTaxId == queryTaxon) {
+                            if (t.IsAncestor(maxTaxAncestor, queryTaxon)) {
                                 int qStartPos = std::min(res.qStartPos, res.qEndPos);
                                 int qEndPos = std::max(res.qStartPos, res.qEndPos);
                                 privateRanges.push_back(Interval<size_t, unsigned int>(makeIntervalPos(queryKey, qStartPos),
