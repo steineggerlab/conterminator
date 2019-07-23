@@ -178,26 +178,35 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                     }
                 }
 
+                // fill up interval tree with elements
+                for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
+                    if (elements[elementIdx].ancestorTax != maxTaxId) {
+                        Matcher::result_t res = Matcher::parseAlignmentRecord(elements[elementIdx].data, true);
+                        speciesRange.insert(res.qStartPos, res.qEndPos);
+                    }
+                }
+
                 // fill up interval tree with elements of minimal taxon
                 for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
                     if (static_cast<unsigned int>(elements[elementIdx].ancestorTax) != maxTaxId) {
                         Matcher::result_t res = Matcher::parseAlignmentRecord(elements[elementIdx].data, true);
-                        speciesRange.insert(res.qStartPos, res.qEndPos);
-                        if (maxTaxId == queryTaxon) {
-                            int qStartPos = std::min(res.qStartPos, res.qEndPos);
-                            int qEndPos = std::max(res.qStartPos, res.qEndPos);
-                            privateRanges.push_back(Interval<size_t, unsigned int>(makeIntervalPos(queryKey, qStartPos),
-                                                                                   makeIntervalPos(queryKey, qEndPos),
-                                                                                   res.dbKey));
-                        } else {
-                            int dbStartPos = std::min(res.dbStartPos, res.dbEndPos);
-                            int dbEndPos = std::max(res.dbStartPos, res.dbEndPos);
-                            privateRanges.push_back(
-                                    Interval<size_t, unsigned int>(makeIntervalPos(res.dbKey, dbStartPos),
-                                                                   makeIntervalPos(res.dbKey, dbEndPos),
-                                                                   queryKey));
+                        bool overlapsWithOtherSpecie = speciesRange.doesOverlap(res.qStartPos, res.qEndPos);
+                        if(overlapsWithOtherSpecie == true){
+                            if (maxTaxId == queryTaxon) {
+                                int qStartPos = std::min(res.qStartPos, res.qEndPos);
+                                int qEndPos = std::max(res.qStartPos, res.qEndPos);
+                                privateRanges.push_back(Interval<size_t, unsigned int>(makeIntervalPos(queryKey, qStartPos),
+                                                                                       makeIntervalPos(queryKey, qEndPos),
+                                                                                       res.dbKey));
+                            } else {
+                                int dbStartPos = std::min(res.dbStartPos, res.dbEndPos);
+                                int dbEndPos = std::max(res.dbStartPos, res.dbEndPos);
+                                privateRanges.push_back(
+                                        Interval<size_t, unsigned int>(makeIntervalPos(res.dbKey, dbStartPos),
+                                                                       makeIntervalPos(res.dbKey, dbEndPos),
+                                                                       queryKey));
+                            }
                         }
-
                     }
                 }
 
