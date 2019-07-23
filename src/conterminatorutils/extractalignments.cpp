@@ -180,7 +180,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
 
                 // fill up interval tree with elements
                 for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
-                    if (elements[elementIdx].ancestorTax != maxTaxId) {
+                    if (static_cast<unsigned int>(elements[elementIdx].ancestorTax) != maxTaxId) {
                         Matcher::result_t res = Matcher::parseAlignmentRecord(elements[elementIdx].data, true);
                         speciesRange.insert(res.qStartPos, res.qEndPos);
                     }
