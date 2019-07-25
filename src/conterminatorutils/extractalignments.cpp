@@ -411,8 +411,12 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                 char strand  = (alnRes[elementIdx].qStartPos > alnRes[elementIdx].qEndPos ||
                                 alnRes[elementIdx].dbStartPos > alnRes[elementIdx].dbEndPos  ) ? '-' : '+';
 
-                const IntervalTree<size_t, Contamination>::interval * interval = tree.findOverlappingSingle(makeIntervalPos(alnRes[elementIdx].dbKey, dbStartPos),
+                IntervalTree<size_t, Contamination>::interval * interval = NULL;
+                if(inIndex[alnRes[elementIdx].dbKey]){
+                    const IntervalTree<size_t, Contamination>::interval * retInterval = tree.findOverlappingSingle(makeIntervalPos(alnRes[elementIdx].dbKey, dbStartPos),
                                                                                                       makeIntervalPos(alnRes[elementIdx].dbKey, dbEndPos));
+                    interval = (IntervalTree<size_t, Contamination>::interval *) retInterval;
+                }
                 if(interval!=NULL) {
                     // simple swap, evalue should not be a problem here
                     Contamination contermination = interval->value;
@@ -457,8 +461,13 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                                                       alnRes[elementIdx].dbStartPos, alnRes[elementIdx].dbEndPos, alnRes[elementIdx].dbLen,
                                                       strand);
                 } else {
-                    const IntervalTree<size_t, Contamination>::interval * interval = tree.findOverlappingSingle(makeIntervalPos(queryKey, qStartPos),
-                                                                                                          makeIntervalPos(queryKey, qEndPos));
+                    IntervalTree<size_t, Contamination>::interval * interval = NULL;
+                    if(inIndex[queryKey]) {
+                        const IntervalTree<size_t, Contamination>::interval *retInterval = tree.findOverlappingSingle(
+                                makeIntervalPos(queryKey, qStartPos),
+                                makeIntervalPos(queryKey, qEndPos));
+                        interval = (IntervalTree<size_t, Contamination>::interval *) retInterval;
+                    }
                     if(interval != NULL) {
 
                         Contamination contermination = interval->value;
