@@ -134,8 +134,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
 
     IntervalTree<size_t, Contamination>::interval_vector allRanges;
     Debug::Progress progress(reader.getSize());
-
-#pragma omp parallel
+#pragma omp parallel 
     {
         IntervalTree<size_t, Contamination>::interval_vector privateRanges;
 
@@ -233,7 +232,6 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                     }
                 }
                 speciesRange.buildRanges();
-
 
                 int *maxTaxaIdForRange = new int[speciesRange.getRangesSize()];
                 memset(maxTaxaIdForRange, 0, speciesRange.getRangesSize() * sizeof(int));
@@ -393,7 +391,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
             char *data = reader.getData(i, thread_idx);
             alnRes.clear();
             Matcher::readAlignmentResults(alnRes, data, true);
-
+            std::set<std::pair<unsigned int, int> > alreadyCounted;
             for (size_t elementIdx = 0; elementIdx < alnRes.size(); elementIdx++) {
                 size_t dbStartPos = std::min(alnRes[elementIdx].dbStartPos, alnRes[elementIdx].dbEndPos);
                 size_t dbEndPos   = std::max(alnRes[elementIdx].dbStartPos, alnRes[elementIdx].dbEndPos);
@@ -411,6 +409,9 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                     // transpose if the contamination key is on the dbKey site
                     bool containsContermKey = (contermination.key == alnRes[elementIdx].dbKey || contermination.key == queryKey);
                     if(containsContermKey == false){
+                        if(queryKey==alnRes[elementIdx].dbKey){
+                            continue;
+                        }
                         alnRes[elementIdx].dbStartPos= std::max(intervals[0].start & 0x00000000FFFFFFFF, dbStartPos);
                         alnRes[elementIdx].dbEndPos  = std::min(intervals[0].stop & 0x00000000FFFFFFFF, dbEndPos);
                         int alnLen = alnRes[elementIdx].dbEndPos - alnRes[elementIdx].dbStartPos;
@@ -452,6 +453,12 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                         Contamination contermination = intervals[0].value;
                         bool containsContermKey = (contermination.key == alnRes[elementIdx].dbKey || contermination.key == queryKey);
                         if(containsContermKey == false){
+                            std::pair<int, unsigned int> alreadyCountedQuery = std::make_pair(contermination.key, contermination.range);
+                            const bool existsAlready = alreadyCounted.find(alreadyCountedQuery) != alreadyCounted.end();
+                            if(queryKey==alnRes[elementIdx].dbKey|| existsAlready){
+                                continue;
+                            }
+                            alreadyCounted.insert(alreadyCountedQuery);
                             alnRes[elementIdx].dbKey = queryKey;
                             alnRes[elementIdx].dbStartPos = std::max(intervals[0].start & 0x00000000FFFFFFFF, qStartPos);
                             alnRes[elementIdx].dbEndPos = std::min(intervals[0].stop & 0x00000000FFFFFFFF, qEndPos);
