@@ -319,6 +319,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
     }
 
     Debug::Progress progress2(reader.getSize());
+    Debug(Debug::INFO) << "Build IntervalTree for  " << allRanges.size() << "ranges\n";
 
     IntervalTree<size_t, Contamination> tree(std::move(allRanges));
 
