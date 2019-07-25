@@ -244,7 +244,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
 
                     std::set <std::pair<int, unsigned int>> rangeEntry;
                     for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
-                        if (elements[elementIdx].ancestorTax == 0) {
+                        if (elements[elementIdx].ancestorTax == 0 || elements[elementIdx].start != -1 || elements[elementIdx].end != -1) {
                             continue;
                         }
                         Matcher::result_t res = Matcher::parseAlignmentRecord(elements[elementIdx].data, true);
