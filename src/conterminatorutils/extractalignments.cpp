@@ -401,21 +401,21 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                 char strand  = (alnRes[elementIdx].qStartPos > alnRes[elementIdx].qEndPos ||
                                 alnRes[elementIdx].dbStartPos > alnRes[elementIdx].dbEndPos  ) ? '-' : '+';
 
-                IntervalTree<size_t, Contamination>::interval_vector intervals = tree.findOverlapping(makeIntervalPos(alnRes[elementIdx].dbKey, dbStartPos),
-                                     makeIntervalPos(alnRes[elementIdx].dbKey, dbEndPos));
-                if(intervals.size() > 0) {
+                const IntervalTree<size_t, Contamination>::interval * interval = tree.findOverlappingSingle(makeIntervalPos(alnRes[elementIdx].dbKey, dbStartPos),
+                                                                                                      makeIntervalPos(alnRes[elementIdx].dbKey, dbEndPos));
+                if(interval!=NULL) {
                     // simple swap, evalue should not be a problem here
-                    Contamination contermination = intervals[0].value;
+                    Contamination contermination = interval->value;
                     // transpose if the contamination key is on the dbKey site
                     bool containsContermKey = (contermination.key == alnRes[elementIdx].dbKey || contermination.key == queryKey);
                     if(containsContermKey == false){
                         if(queryKey==alnRes[elementIdx].dbKey){
                             continue;
                         }
-                        alnRes[elementIdx].dbStartPos= std::max(intervals[0].start & 0x00000000FFFFFFFF, dbStartPos);
-                        alnRes[elementIdx].dbEndPos  = std::min(intervals[0].stop & 0x00000000FFFFFFFF, dbEndPos);
+                        alnRes[elementIdx].dbStartPos= std::max(interval->start & 0x00000000FFFFFFFF, dbStartPos);
+                        alnRes[elementIdx].dbEndPos  = std::min(interval->stop & 0x00000000FFFFFFFF, dbEndPos);
                         int alnLen = alnRes[elementIdx].dbEndPos - alnRes[elementIdx].dbStartPos;
-                        int queryStartOffset = alnRes[elementIdx].dbStartPos - (intervals[0].start & 0x00000000FFFFFFFF);
+                        int queryStartOffset = alnRes[elementIdx].dbStartPos - (interval->start & 0x00000000FFFFFFFF);
                         alnRes[elementIdx].qStartPos = contermination.start + queryStartOffset;
                         alnRes[elementIdx].qEndPos = contermination.start + queryStartOffset + alnLen;
                         alnRes[elementIdx].qLen = contermination.len;
@@ -447,10 +447,11 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                                                       alnRes[elementIdx].dbStartPos, alnRes[elementIdx].dbEndPos, alnRes[elementIdx].dbLen,
                                                       strand);
                 } else {
-                    IntervalTree<size_t, Contamination>::interval_vector intervals = tree.findOverlapping(makeIntervalPos(queryKey, qStartPos),
-                                                                                                         makeIntervalPos(queryKey, qEndPos));
-                    if(intervals.size() > 0) {
-                        Contamination contermination = intervals[0].value;
+                    const IntervalTree<size_t, Contamination>::interval * interval = tree.findOverlappingSingle(makeIntervalPos(queryKey, qStartPos),
+                                                                                                          makeIntervalPos(queryKey, qEndPos));
+                    if(interval != NULL) {
+
+                        Contamination contermination = interval->value;
                         bool containsContermKey = (contermination.key == alnRes[elementIdx].dbKey || contermination.key == queryKey);
                         if(containsContermKey == false){
                             std::pair<int, unsigned int> alreadyCountedQuery = std::make_pair(contermination.key, contermination.range);
@@ -460,11 +461,11 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                             }
                             alreadyCounted.insert(alreadyCountedQuery);
                             alnRes[elementIdx].dbKey = queryKey;
-                            alnRes[elementIdx].dbStartPos = std::max(intervals[0].start & 0x00000000FFFFFFFF, qStartPos);
-                            alnRes[elementIdx].dbEndPos = std::min(intervals[0].stop & 0x00000000FFFFFFFF, qEndPos);
+                            alnRes[elementIdx].dbStartPos = std::max(interval->start & 0x00000000FFFFFFFF, qStartPos);
+                            alnRes[elementIdx].dbEndPos = std::min(interval->stop & 0x00000000FFFFFFFF, qEndPos);
                             alnRes[elementIdx].dbLen = alnRes[elementIdx].qLen;
                             int alnLen = alnRes[elementIdx].dbEndPos - alnRes[elementIdx].dbStartPos;
-                            int queryStartOffset = alnRes[elementIdx].dbStartPos - (intervals[0].start & 0x00000000FFFFFFFF);
+                            int queryStartOffset = alnRes[elementIdx].dbStartPos - (interval->start & 0x00000000FFFFFFFF);
                             alnRes[elementIdx].qStartPos = contermination.start + queryStartOffset;
                             alnRes[elementIdx].qEndPos = contermination.start + queryStartOffset + alnLen;
                             alnRes[elementIdx].qLen = contermination.len;

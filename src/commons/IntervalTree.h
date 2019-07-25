@@ -179,6 +179,44 @@ public:
     }
 
     // Call f on all intervals near the range [start, stop]:
+    const interval * visit_near_single(const Scalar& start, const Scalar& stop) const {
+        if (!intervals.empty() && ! (stop < intervals.front().start)) {
+            for (size_t i = 0; i< intervals.size(); i++) {
+                if (intervals[i].stop >= start && intervals[i].start <= stop) {
+                    // Only apply f if overlapping
+                    return (&intervals[i]);
+                }
+            }
+        }
+        if (left && start <= center) {
+            return left->visit_near_single(start, stop);
+        }
+        if (right && stop >= center) {
+            return right->visit_near_single(start, stop);
+        }
+        return NULL;
+    }
+
+    // Call f on all intervals near the range [start, stop]:
+    bool visit_near_single_overlaps(const Scalar& start, const Scalar& stop) const {
+        if (!intervals.empty() && ! (stop < intervals.front().start)) {
+            for (auto & interval : intervals) {
+                if (interval.stop >= start && interval.start <= stop) {
+                    // Only apply f if overlapping
+                    return true;
+                }
+            }
+        }
+        if (left && start <= center) {
+            return left->visit_near_single_overlaps(start, stop);
+        }
+        if (right && stop >= center) {
+            return right->visit_near_single_overlaps(start, stop);
+        }
+        return false;
+    }
+
+    // Call f on all intervals near the range [start, stop]:
     template <class UnaryFunction>
     void visit_near(const Scalar& start, const Scalar& stop, UnaryFunction f) const {
         if (!intervals.empty() && ! (stop < intervals.front().start)) {
@@ -212,6 +250,7 @@ public:
         visit_near(start, stop, filterF);
     }
 
+
     // Call f on all intervals contained within [start, stop]
     template <class UnaryFunction>
     void visit_contained(const Scalar& start, const Scalar& stop, UnaryFunction f) const {
@@ -221,6 +260,15 @@ public:
             }
         };
         visit_near(start, stop, filterF);
+    }
+
+
+    const interval * findOverlappingSingle(const Scalar& start, const Scalar& stop) const {
+        return  visit_near_single(start, stop);
+    }
+
+    bool overlaps(const Scalar& start, const Scalar& stop) const {
+        return visit_near_single_overlaps(start, stop);
     }
 
     interval_vector findOverlapping(const Scalar& start, const Scalar& stop) const {
@@ -346,6 +394,8 @@ public:
         }
         return os;
     }
+
+
 
 private:
     interval_vector intervals;
