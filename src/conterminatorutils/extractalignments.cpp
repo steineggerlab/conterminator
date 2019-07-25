@@ -79,6 +79,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
 
     DBReader<unsigned int> seqdb(par.db1.c_str(), par.db1Index.c_str(), par.threads, DBReader<unsigned int>::USE_INDEX);
     seqdb.open(DBReader<unsigned int>::NOSORT);
+    size_t seqDbSize = seqdb.getLastKey();
     NucleotideMatrix subMat(par.scoringMatrixFile.nucleotides, 1.0, 0.0);
     EvalueComputation evaluer(seqdb.getAminoAcidDBSize(), &subMat);
     seqdb.close();
@@ -134,6 +135,8 @@ int extractalignments(int argc, const char **argv, const Command& command) {
 
     IntervalTree<size_t, Contamination>::interval_vector allRanges;
     Debug::Progress progress(reader.getSize());
+    char * inIndex = new char[seqDbSize];
+    memset(inIndex, 0, sizeof(char)*seqDbSize);
 #pragma omp parallel 
     {
         IntervalTree<size_t, Contamination>::interval_vector privateRanges;
@@ -295,9 +298,11 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                                 contermEnd = dbEndPos;
                                 contermLen = res.dbLen;
                             }
+                            inIndex[queryKey] = 1;
                             privateRanges.push_back(Interval<size_t, Contamination>(makeIntervalPos(queryKey, qStartPos),
                                                                                    makeIntervalPos(queryKey, qEndPos),
                                                                                    Contamination(contermKey, contermStart, contermEnd, res.seqId, contermLen, elements[elementIdx].range )));
+                            inIndex[res.dbKey] = 1;
                             privateRanges.push_back(
                                     Interval<size_t, Contamination>(makeIntervalPos(res.dbKey, dbStartPos),
                                                                    makeIntervalPos(res.dbKey, dbEndPos),
@@ -319,7 +324,11 @@ int extractalignments(int argc, const char **argv, const Command& command) {
     }
 
     Debug::Progress progress2(reader.getSize());
-    Debug(Debug::INFO) << "Build IntervalTree for  " << allRanges.size() << "ranges\n";
+    size_t totalCnt = 0;
+    for(size_t i = 0; i < seqDbSize; i++){
+        totalCnt+=inIndex[i];
+    }
+    Debug(Debug::INFO) << "Build IntervalTree for " << allRanges.size() << " ranges of " << totalCnt <<" sequences\n";
 
     IntervalTree<size_t, Contamination> tree(std::move(allRanges));
 
