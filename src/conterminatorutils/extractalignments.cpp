@@ -119,28 +119,39 @@ int extractalignments(int argc, const char **argv, const Command& command) {
     }
 
     struct Contamination{
-        Contamination(unsigned int key, int start,
+        Contamination(size_t arrayPos, unsigned int key, int start,
                       int end, float seqId,
-                      unsigned int len, int range) : key(key), start(start),
+                      unsigned int len, int range) : arrayPos(arrayPos),
+                                                     key(key), start(start),
                                                      end(end), seqId(seqId),
                                                      len(len), range(range) {}
+        size_t arrayPos;
         unsigned int key;
         int start;
         int end;
         float seqId;
         unsigned int len;
         int range;
+
+        // need for sorting the results
+        static bool compareContaminationByArrayPos (const Contamination &first, const Contamination &second) {
+            //return (first.eval < second.eval);
+            return (first.arrayPos < second.arrayPos);
+        }
+
+
     };
 
-
-    IntervalTree<size_t, Contamination>::interval_vector allRanges;
+    size_t contaminationPos = 0;
+    IntervalTree<size_t, size_t >::interval_vector allRanges;
+    std::vector<Contamination> allContaminations;
     Debug::Progress progress(reader.getSize());
     char * inIndex = new char[seqDbSize];
     memset(inIndex, 0, sizeof(char)*seqDbSize);
 #pragma omp parallel 
     {
-        IntervalTree<size_t, Contamination>::interval_vector privateRanges;
-
+        IntervalTree<size_t, size_t >::interval_vector privateRanges;
+        std::vector<Contamination> privateContaminations;
         size_t *taxaCounter = new size_t[taxonList.size()];
 
         unsigned int thread_idx = 0;
@@ -272,7 +283,6 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                     delete[] maxCntForRange;
                 }
 
-
                 //  pick conterminated
                 for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
                     if (elements[elementIdx].range != -1) {
@@ -299,15 +309,20 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                                 contermLen = res.dbLen;
                             }
                             inIndex[queryKey] = 1;
-                            privateRanges.push_back(Interval<size_t, Contamination>(makeIntervalPos(queryKey, qStartPos),
-                                                                                   makeIntervalPos(queryKey, qEndPos),
-                                                                                   Contamination(contermKey, contermStart, contermEnd, res.seqId, contermLen, elements[elementIdx].range )));
-                            inIndex[res.dbKey] = 1;
-                            privateRanges.push_back(
-                                    Interval<size_t, Contamination>(makeIntervalPos(res.dbKey, dbStartPos),
-                                                                   makeIntervalPos(res.dbKey, dbEndPos),
-                                                                   Contamination(contermKey, contermStart, contermEnd, res.seqId, contermLen, elements[elementIdx].range )));
+                            size_t offset = __sync_fetch_and_add(&contaminationPos, 1);
 
+                            privateContaminations.push_back(Contamination(offset, contermKey, contermStart, contermEnd, res.seqId, contermLen, elements[elementIdx].range ));
+                            privateRanges.push_back(Interval<size_t, size_t >(makeIntervalPos(queryKey, qStartPos),
+                                                                                   makeIntervalPos(queryKey, qEndPos), offset));
+                            if(queryKey!=res.dbKey){
+                                inIndex[res.dbKey] = 1;
+                                size_t offset = __sync_fetch_and_add(&contaminationPos, 1);
+                                privateContaminations.push_back(Contamination(offset, contermKey, contermStart, contermEnd, res.seqId, contermLen, elements[elementIdx].range ));
+                                privateRanges.push_back(
+                                        Interval<size_t, size_t>(makeIntervalPos(res.dbKey, dbStartPos),
+                                                                       makeIntervalPos(res.dbKey, dbEndPos), offset));
+
+                            }
                         }
                     }
                 }
@@ -319,7 +334,11 @@ int extractalignments(int argc, const char **argv, const Command& command) {
 #pragma omp critical
         {
             allRanges.insert(allRanges.end(), privateRanges.begin(), privateRanges.end());
-        }
+        };
+#pragma omp critical
+        {
+            allContaminations.insert(allContaminations.end(), privateContaminations.begin(), privateContaminations.end());
+        };
         delete[] taxaCounter;
     }
 
@@ -328,9 +347,9 @@ int extractalignments(int argc, const char **argv, const Command& command) {
     for(size_t i = 0; i < seqDbSize; i++){
         totalCnt+=inIndex[i];
     }
+    omptl::sort(allContaminations.begin(), allContaminations.end(), Contamination::compareContaminationByArrayPos);
     Debug(Debug::INFO) << "Build IntervalTree for " << allRanges.size() << " ranges of " << totalCnt <<" sequences\n";
-
-    IntervalTree<size_t, Contamination> tree(std::move(allRanges));
+    IntervalTree<size_t, size_t> tree(std::move(allRanges));
 
     struct SmallAlignment{
         unsigned int conterminatedKey;
@@ -411,15 +430,15 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                 char strand  = (alnRes[elementIdx].qStartPos > alnRes[elementIdx].qEndPos ||
                                 alnRes[elementIdx].dbStartPos > alnRes[elementIdx].dbEndPos  ) ? '-' : '+';
 
-                IntervalTree<size_t, Contamination>::interval * interval = NULL;
+                IntervalTree<size_t, size_t>::interval * interval = NULL;
                 if(inIndex[alnRes[elementIdx].dbKey]){
-                    const IntervalTree<size_t, Contamination>::interval * retInterval = tree.findOverlappingSingle(makeIntervalPos(alnRes[elementIdx].dbKey, dbStartPos),
+                    const IntervalTree<size_t, size_t >::interval * retInterval = tree.findOverlappingSingle(makeIntervalPos(alnRes[elementIdx].dbKey, dbStartPos),
                                                                                                       makeIntervalPos(alnRes[elementIdx].dbKey, dbEndPos));
-                    interval = (IntervalTree<size_t, Contamination>::interval *) retInterval;
+                    interval = (IntervalTree<size_t, size_t>::interval *) retInterval;
                 }
                 if(interval!=NULL) {
                     // simple swap, evalue should not be a problem here
-                    Contamination contermination = interval->value;
+                    Contamination contermination = allContaminations[interval->value];
                     // transpose if the contamination key is on the dbKey site
                     bool containsContermKey = (contermination.key == alnRes[elementIdx].dbKey || contermination.key == queryKey);
                     if(containsContermKey == false){
@@ -461,16 +480,15 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                                                       alnRes[elementIdx].dbStartPos, alnRes[elementIdx].dbEndPos, alnRes[elementIdx].dbLen,
                                                       strand);
                 } else {
-                    IntervalTree<size_t, Contamination>::interval * interval = NULL;
+                    IntervalTree<size_t, size_t>::interval * interval = NULL;
                     if(inIndex[queryKey]) {
-                        const IntervalTree<size_t, Contamination>::interval *retInterval = tree.findOverlappingSingle(
+                        const IntervalTree<size_t, size_t>::interval *retInterval = tree.findOverlappingSingle(
                                 makeIntervalPos(queryKey, qStartPos),
                                 makeIntervalPos(queryKey, qEndPos));
-                        interval = (IntervalTree<size_t, Contamination>::interval *) retInterval;
+                        interval = (IntervalTree<size_t, size_t>::interval *) retInterval;
                     }
                     if(interval != NULL) {
-
-                        Contamination contermination = interval->value;
+                        Contamination contermination = allContaminations[interval->value];
                         bool containsContermKey = (contermination.key == alnRes[elementIdx].dbKey || contermination.key == queryKey);
                         if(containsContermKey == false){
                             std::pair<int, unsigned int> alreadyCountedQuery = std::make_pair(contermination.key, contermination.range);
