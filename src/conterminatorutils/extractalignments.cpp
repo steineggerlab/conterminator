@@ -285,7 +285,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                             int contermStart, contermEnd;
                             unsigned int contermLen;
                             if (t.IsAncestor(maxTaxaIdForRange[rangeIndex], queryTaxon) == false) {
-                                contermKey = queryTaxon;
+                                contermKey = queryKey;
                                 contermStart = qStartPos;
                                 contermEnd = qEndPos;
                                 contermLen = res.qLen;
