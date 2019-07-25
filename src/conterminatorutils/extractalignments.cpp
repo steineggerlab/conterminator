@@ -135,7 +135,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
     IntervalTree<size_t, Contamination>::interval_vector allRanges;
     Debug::Progress progress(reader.getSize());
 
-#pragma omp parallel reduction (+: rangeWithSingleHit, totalRanges)
+#pragma omp parallel
     {
         IntervalTree<size_t, Contamination>::interval_vector privateRanges;
 
