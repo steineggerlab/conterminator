@@ -39,7 +39,7 @@ std::vector<struct Command> commands = {
                  {"alnDB",   DbType::ACCESS_MODE_OUTPUT, DbType::NEED_DATA, &DbValidator::alignmentDb },
                  {"resultDB",   DbType::ACCESS_MODE_OUTPUT, DbType::NEED_DATA, &DbValidator::alignmentDb }}},
 
-        {"extractalignments",          extractalignments,          &par.onlythreads,         COMMAND_TAXONOMY,
+        {"extractalignments",          extractalignments,          &par.extractalignments,         COMMAND_TAXONOMY,
                 "Extract alignments containing n taxas",
                 "Extract alignments containing n taxas",
                 "Martin Steinegger <martin.steinegger@mpibpc.mpg.de>",

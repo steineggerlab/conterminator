@@ -77,6 +77,12 @@ int extractalignments(int argc, const char **argv, const Command& command) {
     }
     std::vector<std::string> ranks = Util::split(par.lcaRanks, ":");
 
+    DBReader<unsigned int> seqdb(par.db1.c_str(), par.db1Index.c_str(), par.threads, DBReader<unsigned int>::USE_INDEX);
+    seqdb.open(DBReader<unsigned int>::NOSORT);
+    NucleotideMatrix subMat(par.scoringMatrixFile.nucleotides, 1.0, 0.0);
+    EvalueComputation evaluer(seqdb.getAminoAcidDBSize(), &subMat);
+    seqdb.close();
+
     DBReader<unsigned int> reader(par.db2.c_str(), par.db2Index.c_str(), par.threads,
                                   DBReader<unsigned int>::USE_DATA | DBReader<unsigned int>::USE_INDEX);
     reader.open(DBReader<unsigned int>::LINEAR_ACCCESS);
@@ -88,6 +94,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
     NcbiTaxonomy t(namesFile, nodesFile, mergedFile);
 
     Debug(Debug::INFO) << "Add taxonomy information ...\n";
+
 
     // a few NCBI taxa are blacklisted by default, they contain unclassified sequences (e.g. metagenomes) or other sequences (e.g. plasmids)
     // if we do not remove those, a lot of sequences would be classified as Root, even though they have a sensible LCA
@@ -109,16 +116,31 @@ int extractalignments(int argc, const char **argv, const Command& command) {
         int currTaxa = Util::fast_atoi<int>(blacklistStr[i].c_str());
         blackList.push_back(currTaxa);
     }
-    
 
-    IntervalTree<size_t, unsigned int>::interval_vector allRanges;
+    struct Contamination{
+        Contamination(unsigned int key, int start,
+                      int end, float seqId,
+                      unsigned int len, int range) : key(key), start(start),
+                                                     end(end), seqId(seqId),
+                                                     len(len), range(range) {}
+        unsigned int key;
+        int start;
+        int end;
+        float seqId;
+        unsigned int len;
+        int range;
+    };
+
+
+    IntervalTree<size_t, Contamination>::interval_vector allRanges;
     Debug::Progress progress(reader.getSize());
 
 #pragma omp parallel reduction (+: rangeWithSingleHit, totalRanges)
     {
-        IntervalTree<size_t, unsigned int>::interval_vector privateRanges;
+        IntervalTree<size_t, Contamination>::interval_vector privateRanges;
 
         size_t *taxaCounter = new size_t[taxonList.size()];
+
         unsigned int thread_idx = 0;
         std::string resultData;
         resultData.reserve(4096);
@@ -133,7 +155,6 @@ int extractalignments(int argc, const char **argv, const Command& command) {
             progress.updateProgress();
             resultData.clear();
             elements.clear();
-            speciesRange.reset();
             memset(taxaCounter, 0, taxonList.size() * sizeof(size_t));
             unsigned int queryKey = reader.getDbKey(i);
 
@@ -163,37 +184,40 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                 distinctTaxaCnt += hasTaxa;
             }
             // compute how much the distinct taxon coverage. The maximal taxa is contaminated by the minimal taxa
-            int prevTaxId = -1;
-            size_t currTaxCnt = 0;
-            size_t maxTaxCnt = 0;
-            int prevEnd = 0;
+
             unsigned int maxTaxAncestor = UINT_MAX;
+            {
+                int prevTaxId = -1;
+                size_t currTaxCnt = 0;
+                size_t maxTaxCnt = 0;
+                int prevEnd = 0;
 
-            for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
-                if(elements[elementIdx].ancestorTax == 0){
-                    continue;
-                }
-                if(prevTaxId != elements[elementIdx].ancestorTax){
-                    if(currTaxCnt > maxTaxCnt){
-                        maxTaxAncestor = prevTaxId;
-                        maxTaxCnt = currTaxCnt;
+                for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
+                    if (elements[elementIdx].ancestorTax == 0) {
+                        continue;
                     }
-                    prevEnd = -1;
-                    currTaxCnt = 0;
+                    if (prevTaxId != elements[elementIdx].ancestorTax) {
+                        if (currTaxCnt > maxTaxCnt) {
+                            maxTaxAncestor = prevTaxId;
+                            maxTaxCnt = currTaxCnt;
+                        }
+                        prevEnd = -1;
+                        currTaxCnt = 0;
+                    }
+                    if (elements[elementIdx].start > prevEnd) {
+                        currTaxCnt += (elements[elementIdx].end - elements[elementIdx].start);
+                    }
+                    prevTaxId = elements[elementIdx].ancestorTax;
+                    prevEnd = elements[elementIdx].end;
                 }
-                if(elements[elementIdx].start > prevEnd) {
-                    currTaxCnt += (elements[elementIdx].end - elements[elementIdx].start);
+                if (currTaxCnt > maxTaxCnt) {
+                    maxTaxAncestor = prevTaxId;
                 }
-                prevTaxId = elements[elementIdx].ancestorTax;
-                prevEnd = elements[elementIdx].end;
             }
-            if(currTaxCnt > maxTaxCnt){
-                maxTaxAncestor = prevTaxId;
-            }
-
             // find max. taxa
             // reportDistinctTaxa == 2
             if (distinctTaxaCnt == reportDistinctTaxa) {
+                speciesRange.reset();
                 if (maxTaxAncestor == UINT_MAX) {
                     Debug(Debug::WARNING) << "Max Tax Id: " << maxTaxAncestor << "!\n";
                     for (size_t i = 0; i < taxonList.size(); i++) {
@@ -208,32 +232,83 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                         speciesRange.insert(res.qStartPos, res.qEndPos);
                     }
                 }
+                speciesRange.buildRanges();
 
-                // pick conterminated ranges
-                for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
-                    if (static_cast<unsigned int>(elements[elementIdx].ancestorTax) != maxTaxAncestor) {
+
+                int *maxTaxaIdForRange = new int[speciesRange.getRangesSize()];
+                memset(maxTaxaIdForRange, 0, speciesRange.getRangesSize() * sizeof(int));
+                // count taxons per range
+                {
+                    int *rangeSizes = new int[speciesRange.getRangesSize() * taxonList.size()];
+                    memset(rangeSizes, 0, speciesRange.getRangesSize() * taxonList.size() * sizeof(int));
+                    int *maxCntForRange = new int[speciesRange.getRangesSize()];
+                    memset(maxCntForRange, 0, speciesRange.getRangesSize() * sizeof(int));
+
+                    std::set <std::pair<int, unsigned int>> rangeEntry;
+                    for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
+                        if (elements[elementIdx].ancestorTax == 0) {
+                            continue;
+                        }
                         Matcher::result_t res = Matcher::parseAlignmentRecord(elements[elementIdx].data, true);
                         bool overlapsWithOtherSpecie = speciesRange.doesOverlap(res.qStartPos, res.qEndPos);
-                        if(overlapsWithOtherSpecie == true){
-                            if (t.IsAncestor(maxTaxAncestor, queryTaxon)) {
-                                int qStartPos = std::min(res.qStartPos, res.qEndPos);
-                                int qEndPos = std::max(res.qStartPos, res.qEndPos);
-                                privateRanges.push_back(Interval<size_t, unsigned int>(makeIntervalPos(queryKey, qStartPos),
-                                                                                       makeIntervalPos(queryKey, qEndPos),
-                                                                                       res.dbKey));
-                            } else {
-                                int dbStartPos = std::min(res.dbStartPos, res.dbEndPos);
-                                int dbEndPos = std::max(res.dbStartPos, res.dbEndPos);
-                                privateRanges.push_back(
-                                        Interval<size_t, unsigned int>(makeIntervalPos(res.dbKey, dbStartPos),
-                                                                       makeIntervalPos(res.dbKey, dbEndPos),
-                                                                       queryKey));
+                        if (overlapsWithOtherSpecie == true) {
+                            int rangeIndex = speciesRange.findIndex(res.qStartPos, res.qEndPos);
+                            elements[elementIdx].range = rangeIndex;
+                            std::pair<int, unsigned int> rangeQuery = std::make_pair(rangeIndex, res.dbKey);
+                            const bool existsAlready = rangeEntry.find(rangeQuery) != rangeEntry.end();
+                            if (existsAlready == false) {
+                                rangeEntry.insert(rangeQuery);
+                                int ancestorIdx = ancestorTax2int[elements[elementIdx].ancestorTax];
+                                rangeSizes[rangeIndex * taxonList.size() + ancestorIdx] += 1;
+                                if (rangeSizes[rangeIndex * taxonList.size() + ancestorIdx] > maxTaxaIdForRange[rangeIndex]) {
+                                    maxCntForRange[rangeIndex] = rangeSizes[rangeIndex * taxonList.size() + ancestorIdx];
+                                    maxTaxaIdForRange[rangeIndex] = elements[elementIdx].ancestorTax;
+                                }
                             }
                         }
                     }
+                    delete[] rangeSizes;
+                    delete[] maxCntForRange;
                 }
 
 
+                //  pick conterminated
+                for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
+                    if (elements[elementIdx].range != -1) {
+                        Matcher::result_t res = Matcher::parseAlignmentRecord(elements[elementIdx].data, true);
+                        int rangeIndex = speciesRange.findIndex(res.qStartPos, res.qEndPos);
+                        // here we write only the contermination in the private ranges
+                        if(elements[elementIdx].ancestorTax != maxTaxaIdForRange[rangeIndex]){
+                            unsigned int contermKey;
+                            int qStartPos = std::min(res.qStartPos, res.qEndPos);
+                            int qEndPos = std::max(res.qStartPos, res.qEndPos);
+                            int dbStartPos = std::min(res.dbStartPos, res.dbEndPos);
+                            int dbEndPos = std::max(res.dbStartPos, res.dbEndPos);
+                            int contermStart, contermEnd;
+                            unsigned int contermLen;
+                            if (t.IsAncestor(maxTaxaIdForRange[rangeIndex], queryTaxon) == false) {
+                                contermKey = queryTaxon;
+                                contermStart = qStartPos;
+                                contermEnd = qEndPos;
+                                contermLen = res.qLen;
+                            }else {
+                                contermKey = res.dbKey;
+                                contermStart = dbStartPos;
+                                contermEnd = dbEndPos;
+                                contermLen = res.dbLen;
+                            }
+                            privateRanges.push_back(Interval<size_t, Contamination>(makeIntervalPos(queryKey, qStartPos),
+                                                                                   makeIntervalPos(queryKey, qEndPos),
+                                                                                   Contamination(contermKey, contermStart, contermEnd, res.seqId, contermLen, elements[elementIdx].range )));
+                            privateRanges.push_back(
+                                    Interval<size_t, Contamination>(makeIntervalPos(res.dbKey, dbStartPos),
+                                                                   makeIntervalPos(res.dbKey, dbEndPos),
+                                                                   Contamination(contermKey, contermStart, contermEnd, res.seqId, contermLen, elements[elementIdx].range )));
+
+                        }
+                    }
+                }
+                delete [] maxTaxaIdForRange;
             }
         }
 
@@ -247,10 +322,12 @@ int extractalignments(int argc, const char **argv, const Command& command) {
 
     Debug::Progress progress2(reader.getSize());
 
-    IntervalTree<size_t, unsigned int> tree(std::move(allRanges));
+    IntervalTree<size_t, Contamination> tree(std::move(allRanges));
 
     struct SmallAlignment{
         unsigned int conterminatedKey;
+        unsigned int range;
+        unsigned int queryKey;
         unsigned int dbKey;
         int score;
         float seqId;
@@ -262,9 +339,9 @@ int extractalignments(int argc, const char **argv, const Command& command) {
         int dbEndPos;
         unsigned int dbLen;
         char strand;
-        SmallAlignment(unsigned int conterminatedKey, unsigned int dbKey, int score, float seqId, float eval,
+        SmallAlignment(unsigned int conterminatedKey, unsigned int range, unsigned int queryKey, unsigned int dbKey, int score, float seqId, float eval,
                        int qStartPos, int qEndPos, unsigned int qLen, int dbStartPos, int dbEndPos,
-                       unsigned int dbLen, char strand) : conterminatedKey(conterminatedKey), dbKey(dbKey),
+                       unsigned int dbLen, char strand) : conterminatedKey(conterminatedKey), range(range), queryKey(queryKey), dbKey(dbKey),
                                                           score(score), seqId(seqId), eval(eval), qStartPos(qStartPos), qEndPos(qEndPos),
                                                           qLen(qLen), dbStartPos(dbStartPos), dbEndPos(dbEndPos), dbLen(dbLen), strand(strand) {}
 
@@ -275,9 +352,10 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                 return true;
             if (second.conterminatedKey < first.conterminatedKey)
                 return false;
-            if (first.strand < second.strand)
+            //return (first.eval < second.eval);
+            if (first.range < second.range)
                 return true;
-            if (second.strand < first.strand)
+            if (second.range < first.range)
                 return false;
             if (first.qStartPos < second.qStartPos)
                 return true;
@@ -317,43 +395,91 @@ int extractalignments(int argc, const char **argv, const Command& command) {
             Matcher::readAlignmentResults(alnRes, data, true);
 
             for (size_t elementIdx = 0; elementIdx < alnRes.size(); elementIdx++) {
-
                 size_t dbStartPos = std::min(alnRes[elementIdx].dbStartPos, alnRes[elementIdx].dbEndPos);
                 size_t dbEndPos   = std::max(alnRes[elementIdx].dbStartPos, alnRes[elementIdx].dbEndPos);
                 size_t qStartPos = std::min(alnRes[elementIdx].qStartPos, alnRes[elementIdx].qEndPos);
                 size_t qEndPos = std::max(alnRes[elementIdx].qStartPos, alnRes[elementIdx].qEndPos);
-
+                // 00 +,  01 -, 10 -, 11 +
                 char strand  = (alnRes[elementIdx].qStartPos > alnRes[elementIdx].qEndPos ||
                                 alnRes[elementIdx].dbStartPos > alnRes[elementIdx].dbEndPos  ) ? '-' : '+';
-                if(tree.findOverlapping(makeIntervalPos(alnRes[elementIdx].dbKey, dbStartPos),
-                                        makeIntervalPos(alnRes[elementIdx].dbKey, dbEndPos)).size() > 0) {
+
+                IntervalTree<size_t, Contamination>::interval_vector intervals = tree.findOverlapping(makeIntervalPos(alnRes[elementIdx].dbKey, dbStartPos),
+                                     makeIntervalPos(alnRes[elementIdx].dbKey, dbEndPos));
+                if(intervals.size() > 0) {
                     // simple swap, evalue should not be a problem here
-                    unsigned int qLen = alnRes[elementIdx].qLen;
-                    alnRes[elementIdx].qStartPos = dbStartPos;
-                    alnRes[elementIdx].qEndPos = dbEndPos;
-                    alnRes[elementIdx].qLen = alnRes[elementIdx].dbLen;
-                    alnRes[elementIdx].dbStartPos = qStartPos;
-                    alnRes[elementIdx].dbEndPos = qEndPos;
-                    alnRes[elementIdx].dbLen = qLen;
-                    // 00 <- +
-                    // 01 <- -
-                    // 10 <- -
-                    tmpOverlappingAlnRes.emplace_back(alnRes[elementIdx].dbKey, queryKey, alnRes[elementIdx].score,
+                    Contamination contermination = intervals[0].value;
+                    // transpose if the contamination key is on the dbKey site
+                    bool containsContermKey = (contermination.key == alnRes[elementIdx].dbKey || contermination.key == queryKey);
+                    if(containsContermKey == false){
+                        alnRes[elementIdx].dbStartPos= std::max(intervals[0].start & 0x00000000FFFFFFFF, dbStartPos);
+                        alnRes[elementIdx].dbEndPos  = std::min(intervals[0].stop & 0x00000000FFFFFFFF, dbEndPos);
+                        int alnLen = alnRes[elementIdx].dbEndPos - alnRes[elementIdx].dbStartPos;
+                        int queryStartOffset = alnRes[elementIdx].dbStartPos - (intervals[0].start & 0x00000000FFFFFFFF);
+                        alnRes[elementIdx].qStartPos = contermination.start + queryStartOffset;
+                        alnRes[elementIdx].qEndPos = contermination.start + queryStartOffset + alnLen;
+                        alnRes[elementIdx].qLen = contermination.len;
+                        // worst case assumption
+                        alnRes[elementIdx].seqId = contermination.seqId * alnRes[elementIdx].seqId;
+                        int rawScore = (static_cast<float>(alnLen) * alnRes[elementIdx].seqId * subMat.subMatrix[0][0]) + (static_cast<float>(alnLen) * (1.0 - alnRes[elementIdx].seqId) * subMat.subMatrix[0][1]);
+                        alnRes[elementIdx].eval = evaluer.computeEvalue(rawScore, alnRes[elementIdx].qLen);
+                        alnRes[elementIdx].score = evaluer.computeBitScore(rawScore);
+                    } else if((contermination.key == alnRes[elementIdx].dbKey && contermination.key == queryKey)) {
+                        alnRes[elementIdx].qStartPos = contermination.start;
+                        alnRes[elementIdx].qEndPos = contermination.end;
+                        alnRes[elementIdx].dbStartPos = contermination.start;
+                        alnRes[elementIdx].dbEndPos = contermination.end;
+                    } else {
+                        if(contermination.key == alnRes[elementIdx].dbKey) {
+                            unsigned int qLen = alnRes[elementIdx].qLen;
+                            alnRes[elementIdx].qStartPos = dbStartPos;
+                            alnRes[elementIdx].qEndPos = dbEndPos;
+                            alnRes[elementIdx].qLen = alnRes[elementIdx].dbLen;
+                            alnRes[elementIdx].dbStartPos = qStartPos;
+                            alnRes[elementIdx].dbEndPos = qEndPos;
+                            alnRes[elementIdx].dbLen = qLen;
+                        }
+                    }
+
+                    tmpOverlappingAlnRes.emplace_back(contermination.key, contermination.range, alnRes[elementIdx].dbKey, queryKey, alnRes[elementIdx].score,
                                                       alnRes[elementIdx].seqId, alnRes[elementIdx].eval,
                                                       alnRes[elementIdx].qStartPos, alnRes[elementIdx].qEndPos, alnRes[elementIdx].qLen,
                                                       alnRes[elementIdx].dbStartPos, alnRes[elementIdx].dbEndPos, alnRes[elementIdx].dbLen,
                                                       strand);
-                };
+                } else {
+                    IntervalTree<size_t, Contamination>::interval_vector intervals = tree.findOverlapping(makeIntervalPos(queryKey, qStartPos),
+                                                                                                         makeIntervalPos(queryKey, qEndPos));
+                    if(intervals.size() > 0) {
+                        Contamination contermination = intervals[0].value;
+                        bool containsContermKey = (contermination.key == alnRes[elementIdx].dbKey || contermination.key == queryKey);
+                        if(containsContermKey == false){
+                            alnRes[elementIdx].dbKey = queryKey;
+                            alnRes[elementIdx].dbStartPos = std::max(intervals[0].start & 0x00000000FFFFFFFF, qStartPos);
+                            alnRes[elementIdx].dbEndPos = std::min(intervals[0].stop & 0x00000000FFFFFFFF, qEndPos);
+                            alnRes[elementIdx].dbLen = alnRes[elementIdx].qLen;
+                            int alnLen = alnRes[elementIdx].dbEndPos - alnRes[elementIdx].dbStartPos;
+                            int queryStartOffset = alnRes[elementIdx].dbStartPos - (intervals[0].start & 0x00000000FFFFFFFF);
+                            alnRes[elementIdx].qStartPos = contermination.start + queryStartOffset;
+                            alnRes[elementIdx].qEndPos = contermination.start + queryStartOffset + alnLen;
+                            alnRes[elementIdx].qLen = contermination.len;
+                            alnRes[elementIdx].seqId = contermination.seqId * alnRes[elementIdx].seqId;
+                            int rawScore = (static_cast<float>(alnLen) * alnRes[elementIdx].seqId * subMat.subMatrix[0][0]) + (static_cast<float>(alnLen) * (1.0 - alnRes[elementIdx].seqId) * subMat.subMatrix[0][1]);
+                            alnRes[elementIdx].eval = evaluer.computeEvalue(rawScore, alnRes[elementIdx].qLen);
+                            alnRes[elementIdx].score = evaluer.computeBitScore(rawScore);
+                        }else{
+                            alnRes[elementIdx].qStartPos = qStartPos;
+                            alnRes[elementIdx].qEndPos = qEndPos;
+                            alnRes[elementIdx].dbStartPos = dbStartPos;
+                            alnRes[elementIdx].dbEndPos = dbEndPos;
+                        }
 
-
-                if(tree.findOverlapping(makeIntervalPos(queryKey, qStartPos),
-                                        makeIntervalPos(queryKey, qEndPos)).size() > 0) {
-                    tmpOverlappingAlnRes.emplace_back(queryKey, alnRes[elementIdx].dbKey, alnRes[elementIdx].score,
-                                                      alnRes[elementIdx].seqId, alnRes[elementIdx].eval,
-                                                      qStartPos, qEndPos, alnRes[elementIdx].qLen,
-                                                      dbStartPos, dbEndPos, alnRes[elementIdx].dbLen,
-                                                      strand);
-                };
+                        tmpOverlappingAlnRes.emplace_back(contermination.key, contermination.range, queryKey, alnRes[elementIdx].dbKey,
+                                                          alnRes[elementIdx].score,
+                                                          alnRes[elementIdx].seqId, alnRes[elementIdx].eval,
+                                                          alnRes[elementIdx].qStartPos, alnRes[elementIdx].qEndPos, alnRes[elementIdx].qLen,
+                                                          alnRes[elementIdx].dbStartPos, alnRes[elementIdx].dbEndPos, alnRes[elementIdx].dbLen,
+                                                          strand);
+                    }
+                }
             }
         }
 
@@ -368,10 +494,10 @@ int extractalignments(int argc, const char **argv, const Command& command) {
 #ifdef OPENMP
         thread_idx = (unsigned int) omp_get_thread_num();
 #endif
-        SmallAlignment prevAln(UINT_MAX, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '+');
+        SmallAlignment prevAln(UINT_MAX, -1, UINT_MAX, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '+');
         char buffer[4096];
         for (size_t i = 0; i < overlappingAlnRes.size(); i++) {
-            if(prevAln.conterminatedKey != overlappingAlnRes[i].conterminatedKey){
+            if(prevAln.conterminatedKey != overlappingAlnRes[i].conterminatedKey || prevAln.range != overlappingAlnRes[i].range ){
                 if(i > 1){
                     writer.writeEnd(prevAln.conterminatedKey, thread_idx);
                 }
@@ -387,21 +513,29 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                 prevAln = overlappingAlnRes[i];
                 continue;
             }
-            int alnLen = overlappingAlnRes[i].qEndPos - overlappingAlnRes[i].qStartPos;
-            std::string backtrace = SSTR(alnLen + 1) + "M";
-            Matcher::result_t res(overlappingAlnRes[i].dbKey, overlappingAlnRes[i].score,
-                                  0.0, 0.0,
-                                  overlappingAlnRes[i].seqId, overlappingAlnRes[i].eval,
-                                  0,
-                                  overlappingAlnRes[i].qStartPos,
-                                  overlappingAlnRes[i].qEndPos,
-                                  overlappingAlnRes[i].qLen,
-                                  overlappingAlnRes[i].dbStartPos,
-                                  overlappingAlnRes[i].dbEndPos,
-                                  overlappingAlnRes[i].dbLen, backtrace);
-            size_t len = Matcher::resultToBuffer(buffer, res, true, false);
-            //res.dbKey=overlappingAlnRes.
-            writer.writeAdd(buffer, len, thread_idx);
+
+
+            // --min-seq-id
+            bool hasSeqId = overlappingAlnRes[i].seqId >= (par.seqIdThr - std::numeric_limits<float>::epsilon());
+            bool hasEvalue = (overlappingAlnRes[i].eval <= par.evalThr);
+            bool hasAlnLen = ((overlappingAlnRes[i].qEndPos - overlappingAlnRes[i].qStartPos) >= par.alnLenThr);
+            if (hasAlnLen && hasSeqId && hasEvalue) {
+                int alnLen = overlappingAlnRes[i].qEndPos - overlappingAlnRes[i].qStartPos;
+                std::string backtrace = SSTR(alnLen + 1) + "M";
+                Matcher::result_t res(overlappingAlnRes[i].dbKey, overlappingAlnRes[i].score,
+                                      0.0, 0.0,
+                                      overlappingAlnRes[i].seqId, overlappingAlnRes[i].eval,
+                                      0,
+                                      overlappingAlnRes[i].qStartPos,
+                                      overlappingAlnRes[i].qEndPos,
+                                      overlappingAlnRes[i].qLen,
+                                      overlappingAlnRes[i].dbStartPos,
+                                      overlappingAlnRes[i].dbEndPos,
+                                      overlappingAlnRes[i].dbLen, backtrace);
+                size_t len = Matcher::resultToBuffer(buffer, res, true, false);
+                //res.dbKey=overlappingAlnRes.
+                writer.writeAdd(buffer, len, thread_idx);
+            }
             prevAln = overlappingAlnRes[i];
         }
         if(prevAln.conterminatedKey!=UINT_MAX){

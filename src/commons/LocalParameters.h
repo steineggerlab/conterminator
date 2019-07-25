@@ -18,6 +18,7 @@ public:
 
     std::vector<MMseqsParameter*> conterminatorworkflow;
     std::vector<MMseqsParameter*> conterminatorSearch;
+    std::vector<MMseqsParameter*> extractalignments;
     std::vector<MMseqsParameter*> distanceton;
 private:
     LocalParameters() :
@@ -30,6 +31,14 @@ private:
         conterminatorworkflow = combineList(conterminatorworkflow, conterminatorSearch);
         conterminatorworkflow.push_back(&PARAM_REMOVE_TMP_FILES);
         conterminatorworkflow.push_back(&PARAM_RUNNER);
+
+        extractalignments.push_back(&PARAM_SUB_MAT);
+        extractalignments.push_back(&PARAM_E);
+        extractalignments.push_back(&PARAM_MIN_SEQ_ID);
+        extractalignments.push_back(&PARAM_MIN_ALN_LEN);
+        extractalignments.push_back(&PARAM_THREADS);
+        extractalignments.push_back(&PARAM_V);
+
         // distanceton
         distanceton.push_back(&PARAM_EXTRACT_MODE);
         distanceton.push_back(&PARAM_THREADS);
