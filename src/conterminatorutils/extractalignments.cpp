@@ -505,7 +505,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
         char buffer[4096];
         for (size_t i = 0; i < overlappingAlnRes.size(); i++) {
             if(prevAln.conterminatedKey != overlappingAlnRes[i].conterminatedKey || prevAln.range != overlappingAlnRes[i].range ){
-                if(i > 1){
+                if(i > 0){
                     writer.writeEnd(prevAln.conterminatedKey, thread_idx);
                 }
                 writer.writeStart(thread_idx);
