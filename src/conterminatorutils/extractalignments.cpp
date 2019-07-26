@@ -153,12 +153,10 @@ int extractalignments(int argc, const char **argv, const Command& command) {
         IntervalTree<size_t, size_t >::interval_vector privateRanges;
         std::vector<Contamination> privateContaminations;
         size_t *taxaCounter = new size_t[taxonList.size()];
-
-        unsigned int thread_idx = 0;
-        std::string resultData;
-        resultData.reserve(4096);
         IntervalArray speciesRange;
         std::vector<Multipletaxas::TaxonInformation> elements;
+
+        unsigned int thread_idx = 0;
 #ifdef OPENMP
         thread_idx = (unsigned int) omp_get_thread_num();
 #endif
@@ -166,7 +164,6 @@ int extractalignments(int argc, const char **argv, const Command& command) {
 #pragma omp for schedule(dynamic, 10)
         for (size_t i = 0; i < reader.getSize(); ++i) {
             progress.updateProgress();
-            resultData.clear();
             elements.clear();
             memset(taxaCounter, 0, taxonList.size() * sizeof(size_t));
             unsigned int queryKey = reader.getDbKey(i);
@@ -183,7 +180,6 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                 continue;
             }
             // find taxonomical information
-            std::vector<int> taxa;
             Multipletaxas::assignTaxonomy(elements, data, mapping, t, taxonList, blackList, taxaCounter);
             std::sort(elements.begin(), elements.end(), Multipletaxas::TaxonInformation::compareByTaxAndStart);
             int distinctTaxaCnt = 0;
@@ -316,11 +312,11 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                                                                                    makeIntervalPos(queryKey, qEndPos), offset));
                             if(queryKey!=res.dbKey){
                                 inIndex[res.dbKey] = 1;
-                                size_t offset = __sync_fetch_and_add(&contaminationPos, 1);
+                                size_t offset2 = __sync_fetch_and_add(&contaminationPos, 1);
                                 privateContaminations.push_back(Contamination(offset, contermKey, contermStart, contermEnd, res.seqId, contermLen, elements[elementIdx].range ));
                                 privateRanges.push_back(
                                         Interval<size_t, size_t>(makeIntervalPos(res.dbKey, dbStartPos),
-                                                                       makeIntervalPos(res.dbKey, dbEndPos), offset));
+                                                                       makeIntervalPos(res.dbKey, dbEndPos), offset2));
 
                             }
                         }
@@ -348,6 +344,8 @@ int extractalignments(int argc, const char **argv, const Command& command) {
         totalCnt+=inIndex[i];
     }
     omptl::sort(allContaminations.begin(), allContaminations.end(), Contamination::compareContaminationByArrayPos);
+    omptl::sort(allContaminations.begin(), allContaminations.end(), Contamination::compareContaminationByArrayPos);
+
     Debug(Debug::INFO) << "Build IntervalTree for " << allRanges.size() << " ranges of " << totalCnt <<" sequences\n";
     IntervalTree<size_t, size_t> tree(std::move(allRanges));
 
@@ -375,18 +373,27 @@ int extractalignments(int argc, const char **argv, const Command& command) {
         // need for sorting the results
         static bool compareAlignment (const SmallAlignment &first, const SmallAlignment &second) {
             //return (first.eval < second.eval);
+            if (first.conterminatedKey == first.dbKey && first.conterminatedKey == second.conterminatedKey && first.dbKey != second.dbKey )
+                return true;
+            if (second.conterminatedKey == second.dbKey && second.conterminatedKey == first.conterminatedKey && first.dbKey != second.dbKey )
+                return false;
+                //return (first.eval < second.eval);
             if (first.conterminatedKey < second.conterminatedKey)
                 return true;
             if (second.conterminatedKey < first.conterminatedKey)
                 return false;
-            //return (first.eval < second.eval);
-            if (first.range < second.range)
+            if (first.dbKey < second.dbKey)
                 return true;
-            if (second.range < first.range)
+            if (second.dbKey < first.dbKey)
                 return false;
+            //return (first.eval < second.eval);
             if (first.qStartPos < second.qStartPos)
                 return true;
             if (second.qStartPos < first.qStartPos)
+                return false;
+            if (first.qEndPos < second.qEndPos)
+                return true;
+            if (second.qEndPos < first.qEndPos)
                 return false;
             if (first.dbStartPos < second.dbStartPos)
                 return true;
@@ -534,6 +541,8 @@ int extractalignments(int argc, const char **argv, const Command& command) {
         }
     }
     omptl::sort(overlappingAlnRes.begin(), overlappingAlnRes.end(), SmallAlignment::compareAlignment);
+
+
     {
         unsigned int thread_idx = 0;
 #ifdef OPENMP
@@ -542,7 +551,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
         SmallAlignment prevAln(UINT_MAX, -1, UINT_MAX, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '+');
         char buffer[4096];
         for (size_t i = 0; i < overlappingAlnRes.size(); i++) {
-            if(prevAln.conterminatedKey != overlappingAlnRes[i].conterminatedKey || prevAln.range != overlappingAlnRes[i].range ){
+            if(prevAln.conterminatedKey != overlappingAlnRes[i].conterminatedKey){
                 if(i > 0){
                     writer.writeEnd(prevAln.conterminatedKey, thread_idx);
                 }
@@ -588,7 +597,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
         }
     }
 
-
+    delete[] inIndex;
     delete[] ancestorTax2int;
     writer.close();
     reader.close();
