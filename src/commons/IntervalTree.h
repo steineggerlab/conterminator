@@ -107,7 +107,7 @@ public:
 
     IntervalTree(
             interval_vector&& ivals,
-            std::size_t depth = 16,
+            std::size_t depth = 32,
             std::size_t minbucket = 64,
             std::size_t maxbucket = 512,
             Scalar leftextent = 0,
