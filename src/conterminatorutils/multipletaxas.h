@@ -37,8 +37,9 @@ public:
     };
 
     struct TaxonInformation{
-        TaxonInformation(int currTaxa, int ancestorTax, int start, int end, char * data) :
-                currTaxa(currTaxa), ancestorTax(ancestorTax), start(start), end(end), data(data), overlaps(false), range(-1){}
+        TaxonInformation(unsigned int dbKey, int currTaxa, int ancestorTax, int start, int end, char * data) :
+                dbKey(dbKey), currTaxa(currTaxa), ancestorTax(ancestorTax), start(start), end(end), data(data), overlaps(false), range(-1){}
+        unsigned int dbKey;
         int currTaxa;
         int ancestorTax;
         int start;
@@ -131,9 +132,9 @@ public:
             if (isAncestor) {
                 int startPos = Util::fast_atoi<int>(entry[4]);
                 int endPos   = Util::fast_atoi<int>(entry[5]);
-                elements.push_back(TaxonInformation(taxon, taxonList[j], std::min(startPos, endPos), std::max(startPos, endPos), data));
+                elements.push_back(TaxonInformation(id, taxon, taxonList[j], std::min(startPos, endPos), std::max(startPos, endPos), data));
             } else {
-                elements.push_back(TaxonInformation(taxon, 0, -1, -1, data));
+                elements.push_back(TaxonInformation(id, taxon, 0, -1, -1, data));
             }
             next:
             data = Util::skipLine(data);

@@ -20,7 +20,6 @@ int createstats(int argc, const char **argv, const Command& command) {
     par.taxonList = "2,2157,2759,10239";
     // unclassified sequences , other sequences,  artifical sequences, retro virus, environmental samples
     par.blacklist = "12908,28384,81077,11632,340016,61964,48479,48510";
-    int reportDistinctTaxa = 2;
     par.parseParameters(argc, argv, command, true, 0, 0);
 
     std::string nodesFile = par.db1 + "_nodes.dmp";
@@ -59,6 +58,11 @@ int createstats(int argc, const char **argv, const Command& command) {
 //    seqdb.open(DBReader<unsigned int>::NOSORT);
 //    seqdb.close();
 
+    DBReader<unsigned int> header(par.hdr1.c_str(), par.hdr1Index.c_str(), par.threads,
+                                  DBReader<unsigned int>::USE_DATA | DBReader<unsigned int>::USE_INDEX);
+    header.open(DBReader<unsigned int>::NOSORT);
+    header.readMmapedDataInMemory();
+
     DBReader<unsigned int> reader(par.db2.c_str(), par.db2Index.c_str(), par.threads,
                                   DBReader<unsigned int>::USE_DATA | DBReader<unsigned int>::USE_INDEX);
     reader.open(DBReader<unsigned int>::LINEAR_ACCCESS);
@@ -92,6 +96,8 @@ int createstats(int argc, const char **argv, const Command& command) {
 
 
     Debug::Progress progress(reader.getSize());
+    size_t *totalContermCounter = new size_t[taxonList.size()];
+    memset(totalContermCounter, 0, taxonList.size() * sizeof(size_t));
 #pragma omp parallel
     {
         std::string resultData;
@@ -123,8 +129,9 @@ int createstats(int argc, const char **argv, const Command& command) {
                 continue;
             }
             // find taxonomical information
-
+            memset(taxaCounter, 0, taxonList.size() * sizeof(size_t));
             Multipletaxas::assignTaxonomy(elements, data, mapping, t, taxonList, blackList, taxaCounter);
+            // recount
             memset(taxaCounter, 0, taxonList.size() * sizeof(size_t));
             for(size_t i = 0; i < elements.size(); i++){
                 char dbKeyBuffer[255 + 1];
@@ -137,19 +144,88 @@ int createstats(int argc, const char **argv, const Command& command) {
                 }
             }
             std::sort(elements.begin(), elements.end(), Multipletaxas::TaxonInformation::compareByTaxAndStart);
-            int distinctTaxaCnt = 0;
             // find max. taxa
+            size_t minTaxCnt = SIZE_T_MAX;
+            int minTaxId = 0;
+            int maxTaxId = 0;
+            size_t maxTaxCnt = 0;
             for (size_t taxId = 0; taxId < taxonList.size(); taxId++) {
                 resultData.append(SSTR(taxaCounter[taxId]));
-                distinctTaxaCnt += (taxaCounter[taxId] > 0);
+                if(taxaCounter[taxId] < minTaxCnt && taxaCounter[taxId] != 0){
+                    minTaxCnt = taxaCounter[taxId];
+                    minTaxId = taxonList[taxId];
+                }
+
+                if(taxaCounter[taxId] > maxTaxCnt){
+                    maxTaxCnt = taxaCounter[taxId];
+                    maxTaxId = taxonList[taxId];
+                }
                 resultData.push_back('\t');
             }
-            resultData.append(SSTR(distinctTaxaCnt));
+            __sync_fetch_and_add(&(totalContermCounter[ancestorTax2int[minTaxId]]), 1);
+
+            std::set<std::pair<unsigned int, int> > minDbKeys;
+            std::map<int, size_t> maxTaxon;
+
+            for(size_t i = 0; i < elements.size(); i++){
+                if(elements[i].ancestorTax == minTaxId){
+                    std::pair<unsigned int, int> pair =  std::make_pair(elements[i].dbKey, elements[i].currTaxa);
+                    minDbKeys.insert(pair);
+                }
+                if(elements[i].ancestorTax == maxTaxId) {
+                    maxTaxon[elements[i].currTaxa]++;
+                }
+            }
+            std::map<int, size_t>::iterator maxTaxonIt;
+            maxTaxCnt = 0;
+            for ( maxTaxonIt = maxTaxon.begin(); maxTaxonIt != maxTaxon.end(); maxTaxonIt++ )
+            {
+                if(maxTaxonIt->second > maxTaxCnt){
+                    maxTaxId = maxTaxonIt->first;
+                    maxTaxCnt = maxTaxonIt->second;
+                }
+            }
+
+            std::set<std::pair<unsigned int, int>>::iterator minDbKeysIt = minDbKeys.begin();
+            std::string taxons;
+            for (;minDbKeysIt != minDbKeys.end(); minDbKeysIt++){
+                unsigned int dbKey = minDbKeysIt->first;
+                int taxId = minDbKeysIt->second;
+                resultData.append(Util::parseFastaHeader(header.getDataByDBKey(dbKey, thread_idx)));
+                const TaxonNode* node= t.taxonNode(taxId, false);
+                if(node == NULL){
+                    taxons.append("Undef");
+                }else{
+                    taxons.append(node->name);
+                }
+                taxons.push_back(',');
+                resultData.push_back(',');
+            }
+            taxons.pop_back();
+            resultData.pop_back();
+            resultData.push_back('\t');
+            resultData.append(taxons);
+            resultData.push_back('\t');
+            const TaxonNode* node= t.taxonNode(maxTaxId, false);
+            if(node == NULL) {
+                resultData.append("Undef");
+            }else{
+                resultData.append(node->name);
+            }
             resultData.push_back('\n');
             writer.writeData(resultData.c_str(), resultData.size(), queryKey, thread_idx);
         }
     }
-
+    Debug(Debug::INFO) << "\nDetected potentail conterminetaion in the following Taxons: \n" ;
+    for(size_t i = 0; i < taxonList.size(); i++){
+        const TaxonNode* node= t.taxonNode(taxonList[i], false);
+        if(node == NULL) {
+            Debug(Debug::INFO) << "Undef";
+        }else{
+            Debug(Debug::INFO) << node->name;
+        }
+        Debug(Debug::INFO) << "\t" << totalContermCounter[i] << "\n";
+    }
     delete[] ancestorTax2int;
     writer.close();
     reader.close();
