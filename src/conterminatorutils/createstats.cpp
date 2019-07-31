@@ -7,7 +7,7 @@
 #include "Util.h"
 #include <omptl/omptl_algorithm>
 #include <set>
-
+#include <limits>
 
 #ifdef OPENMP
 #include <omp.h>
@@ -145,7 +145,7 @@ int createstats(int argc, const char **argv, const Command& command) {
             }
             std::sort(elements.begin(), elements.end(), Multipletaxas::TaxonInformation::compareByTaxAndStart);
             // find max. taxa
-            size_t minTaxCnt = SIZE_T_MAX;
+            size_t minTaxCnt = std::numeric_limits<size_t>::max();
             int minTaxId = 0;
             int maxTaxId = 0;
             size_t maxTaxCnt = 0;
