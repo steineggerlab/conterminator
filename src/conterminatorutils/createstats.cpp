@@ -183,7 +183,7 @@ int createstats(int argc, const char **argv, const Command& command) {
             maxTaxCnt = 0;
             for ( maxTaxonIt = maxTaxon.begin(); maxTaxonIt != maxTaxon.end(); maxTaxonIt++ )
             {
-                if(maxTaxonIt->second > maxTaxCnt){
+                if(maxTaxonIt->second >= maxTaxCnt){
                     maxTaxId = maxTaxonIt->first;
                     maxTaxCnt = maxTaxonIt->second;
                 }
