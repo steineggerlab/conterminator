@@ -162,6 +162,9 @@ int createstats(int argc, const char **argv, const Command& command) {
                 }
                 resultData.push_back('\t');
             }
+            if(minTaxId == 0 || maxTaxId == 0){
+                continue;
+            }
             __sync_fetch_and_add(&(totalContermCounter[ancestorTax2int[minTaxId]]), 1);
 
             std::set<std::pair<unsigned int, int> > minDbKeys;
