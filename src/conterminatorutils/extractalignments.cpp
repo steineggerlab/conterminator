@@ -146,7 +146,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
     IntervalTree<size_t, size_t >::interval_vector allRanges;
     std::vector<Contamination> allContaminations;
     Debug::Progress progress(reader.getSize());
-    char * inIndex = new char[seqDbSize];
+    char * inIndex = new char[seqDbSize+1];
     memset(inIndex, 0, sizeof(char)*seqDbSize);
 #pragma omp parallel 
     {
@@ -268,7 +268,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                                 rangeEntry.insert(rangeQuery);
                                 int ancestorIdx = ancestorTax2int[elements[elementIdx].ancestorTax];
                                 rangeSizes[rangeIndex * taxonList.size() + ancestorIdx] += 1;
-                                if (rangeSizes[rangeIndex * taxonList.size() + ancestorIdx] > maxTaxaIdForRange[rangeIndex]) {
+                                if (rangeSizes[rangeIndex * taxonList.size() + ancestorIdx] > maxCntForRange[rangeIndex]) {
                                     maxCntForRange[rangeIndex] = rangeSizes[rangeIndex * taxonList.size() + ancestorIdx];
                                     maxTaxaIdForRange[rangeIndex] = elements[elementIdx].ancestorTax;
                                 }
@@ -343,7 +343,6 @@ int extractalignments(int argc, const char **argv, const Command& command) {
     for(size_t i = 0; i < seqDbSize; i++){
         totalCnt+=inIndex[i];
     }
-    omptl::sort(allContaminations.begin(), allContaminations.end(), Contamination::compareContaminationByArrayPos);
     omptl::sort(allContaminations.begin(), allContaminations.end(), Contamination::compareContaminationByArrayPos);
 
     Debug(Debug::INFO) << "Build IntervalTree for " << allRanges.size() << " ranges of " << totalCnt <<" sequences\n";
