@@ -63,6 +63,10 @@ int createstats(int argc, const char **argv, const Command& command) {
     header.open(DBReader<unsigned int>::NOSORT);
     header.readMmapedDataInMemory();
 
+
+    DBReader<unsigned int> sequences(par.db1.c_str(), par.db1Index.c_str(), par.threads, DBReader<unsigned int>::USE_INDEX);
+    sequences.open(DBReader<unsigned int>::NOSORT);
+
     DBReader<unsigned int> reader(par.db2.c_str(), par.db2Index.c_str(), par.threads,
                                   DBReader<unsigned int>::USE_DATA | DBReader<unsigned int>::USE_INDEX);
     reader.open(DBReader<unsigned int>::LINEAR_ACCCESS);
@@ -191,10 +195,12 @@ int createstats(int argc, const char **argv, const Command& command) {
 
             std::set<std::pair<unsigned int, int>>::iterator minDbKeysIt = minDbKeys.begin();
             std::string taxons;
+            std::string dbLength;
             for (;minDbKeysIt != minDbKeys.end(); minDbKeysIt++){
                 unsigned int dbKey = minDbKeysIt->first;
                 int taxId = minDbKeysIt->second;
                 resultData.append(Util::parseFastaHeader(header.getDataByDBKey(dbKey, thread_idx)));
+                dbLength.append(SSTR(sequences.getSeqLens(sequences.getId(dbKey))));
                 const TaxonNode* node= t.taxonNode(taxId, false);
                 if(node == NULL){
                     taxons.append("Undef");
@@ -202,12 +208,16 @@ int createstats(int argc, const char **argv, const Command& command) {
                     taxons.append(node->name);
                 }
                 taxons.push_back(',');
+                dbLength.push_back(',');
                 resultData.push_back(',');
             }
             taxons.pop_back();
+            dbLength.pop_back();
             resultData.pop_back();
             resultData.push_back('\t');
             resultData.append(taxons);
+            resultData.push_back('\t');
+            resultData.append(dbLength);
             resultData.push_back('\t');
             const TaxonNode* node= t.taxonNode(maxTaxId, false);
             if(node == NULL) {
@@ -232,6 +242,8 @@ int createstats(int argc, const char **argv, const Command& command) {
     delete[] ancestorTax2int;
     writer.close();
     reader.close();
+    header.close();
+    sequences.close();
     return EXIT_SUCCESS;
 }
 
