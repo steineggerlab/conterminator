@@ -67,10 +67,10 @@ int conterminator(int argc, const char **argv, const Command &command) {
 
     cmd.addVariable("SPLITSEQ_PAR", par.createParameterString(par.splitsequence).c_str());
     cmd.addVariable("RESCORE_DIAGONAL_PAR", par.createParameterString(par.rescorediagonal).c_str());
-    cmd.addVariable("OFFSETALIGNMENT_PAR", par.createParameterString(par.onlythreads).c_str());
-    cmd.addVariable("MULTIPLETAXA_PAR", par.createParameterString(par.onlythreads).c_str());
-    cmd.addVariable("DISTANCETON_PAR", par.createParameterString(par.onlythreads).c_str());
+    cmd.addVariable("THREADS_PAR", par.createParameterString(par.onlythreads).c_str());
     cmd.addVariable("KMERMATCHER_PAR", par.createParameterString(par.kmermatcher).c_str());
+    cmd.addVariable("PREFILTER_PAR", par.createParameterString(par.prefilter).c_str());
+
 //    par.alphabetSize = alphabetSize;
 //    par.kmerSize = kmerSize;
 //

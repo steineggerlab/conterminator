@@ -35,36 +35,73 @@ if notExists "$TMP_PATH/pref"; then
         || fail "kmermatcher step died"
 fi
 
-if notExists "$TMP_PATH/aln"; then
+if notExists "$TMP_PATH/aln.dbtype"; then
     # shellcheck disable=SC2086
     $RUNNER "$MMSEQS" rescorediagonal "$TMP_PATH/db_rev_split" "$TMP_PATH/db_rev_split" "$TMP_PATH/pref" "$TMP_PATH/aln" ${RESCORE_DIAGONAL_PAR} \
         || fail "rescorediagonal step died"
 fi
 
-if notExists "$TMP_PATH/aln_offset"; then
+if notExists "$TMP_PATH/aln_offset.dbtype"; then
     # shellcheck disable=SC2086
     "$MMSEQS" offsetalignment "${DB}" "$TMP_PATH/db_rev_split" "${DB}" "$TMP_PATH/db_rev_split"  "$TMP_PATH/aln" "$TMP_PATH/aln_offset" ${OFFSETALIGNMENT_PAR} \
         || fail "rescorediagonal step died"
 fi
 
-if notExists "$TMP_PATH/aln_kingdom"; then
+if notExists "$TMP_PATH/contam_aln.dbtype"; then
     # shellcheck disable=SC2086
-    $RUNNER "$MMSEQS" multipletaxas "${DB}"  "$TMP_PATH/aln_offset" "$TMP_PATH/aln_kingdom" ${MULTIPLETAXA_PAR} \
+    $RUNNER "$MMSEQS" extractalignments "${DB}"  "$TMP_PATH/aln_offset" "$TMP_PATH/contam_aln" ${THREADS_PAR} \
+        || fail "extractalignment step died"
+fi
+
+if notExists "$TMP_PATH/contam_region.dbtype"; then
+    # shellcheck disable=SC2086
+    $RUNNER "$MMSEQS" extractalignedregion "${DB}" "${DB}" "$TMP_PATH/contam_aln" "$TMP_PATH/contam_region" ${EXTRACTALIGNMENT} \
+        || fail "extractalignedregion step died"
+fi
+
+awk '{print NR"\t"$2"\t"$3}' "$TMP_PATH/contam_region.index" > "$TMP_PATH/contam_region.new.index"
+awk '{print NR"\t"$1}'  "$TMP_PATH/contam_region.index"  > "$TMP_PATH/contam_region.mapping"
+mv "$TMP_PATH/contam_region.new.index" "$TMP_PATH/contam_region.index"
+
+#TODO
+if notExists "$TMP_PATH/contam_region_pref.dbtype"; then
+    # shellcheck disable=SC2086
+    $RUNNER "$MMSEQS" prefilter "$TMP_PATH/db_rev_split" "$TMP_PATH/contam_region" "$TMP_PATH/contam_region_pref" ${PREFILTER_PAR} \
+        || fail "createdb step died"
+fi
+
+if notExists "$TMP_PATH/contam_region_aln.dbtype"; then
+    # shellcheck disable=SC2086
+    $RUNNER "$MMSEQS" align "$TMP_PATH/db_rev_split" "$TMP_PATH/contam_region" "$TMP_PATH/contam_region_pref" "$TMP_PATH/contam_region_aln" ${ALIGN_PAR} \
+        || fail "createdb step died"
+fi
+
+if notExists "${TMP_PATH}/contam_region_aln_swap.dbtype"; then
+     # shellcheck disable=SC2086
+    "$MMSEQS" swapresults "$TMP_PATH/db_rev_split" "$TMP_PATH/contam_region" "${TMP_PATH}/contam_region_aln" "${TMP_PATH}/contam_region_aln_swap" ${SWAP_PAR} \
+        || fail "Swapresults pref died"
+fi
+
+if notExists "$TMP_PATH/contam_region_aln_swap_offset"; then
+    # shellcheck disable=SC2086
+    "$MMSEQS" offsetalignment "$TMP_PATH/contam_region" "$TMP_PATH/contam_region" "${DB}" "$TMP_PATH/db_rev_split"  "$TMP_PATH/contam_region_aln_swap" "$TMP_PATH/contam_region_aln_swap_offset" ${THREADS_PAR} \
         || fail "rescorediagonal step died"
 fi
 
-if notExists "$2_kingdom.tsv"; then
+awk 'FNR==NR{f[$1]=$2; next} $1 in f {print f[$1]"\t"$2"\t"$3}' "$TMP_PATH/contam_region.mapping" "$TMP_PATH/contam_region_aln_swap_offset.index" > "$TMP_PATH/contam_region_aln_swap_offset.new.index"
+mv "$TMP_PATH/contam_region_aln_swap_offset.new.index" "$TMP_PATH/contam_region_aln_swap_offset.index"
+
+if notExists  "$TMP_PATH/contam_region_aln_swap_offset_stats.dbtype"; then
     # shellcheck disable=SC2086
-    $RUNNER "$MMSEQS" createtsv "${DB}" "${DB}" "$TMP_PATH/aln_kingdom" "$2_kingdom.tsv" \
+    $RUNNER "$MMSEQS" createstats "${DB}" "$TMP_PATH/contam_region_aln_swap_offset" "$TMP_PATH/contam_region_aln_swap_offset_stats" ${THREADS_PAR} \
         || fail "createtsv step died"
 fi
 
-if notExists "$4/aln_offset_distance"; then
+if notExists "$2"; then
     # shellcheck disable=SC2086
-    "$MMSEQS" distanceton  "${DB}" "${DB}" "$TMP_PATH/aln_kingdom" "$TMP_PATH/aln_kingdom_distance" ${DISTANCETON_PAR}  \
-        || fail "distanceton step died"
+    $RUNNER "$MMSEQS" createtsv "${DB}" "$TMP_PATH/contam_region_aln_swap_offset_stats" "$2" ${THREADS_PAR} \
+        || fail "createtsv step died"
 fi
-
 
 
 if [ -n "$REMOVE_TMP" ]; then

@@ -328,7 +328,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
             writePos++;
             allContaminations[writePos]=allContaminations[i];
         }else{
-            if(allContaminations[i].start < allContaminations[writePos].end){
+            if(allContaminations[i].start <= (allContaminations[writePos].end+1)){
                 allContaminations[writePos].end = std::max(allContaminations[i].end, allContaminations[writePos].end);
                 allContaminations[writePos].seqId = std::max(allContaminations[i].seqId, allContaminations[writePos].seqId);
             }else{
@@ -359,7 +359,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                                   allContaminations[i].len, "");
             size_t len = Matcher::resultToBuffer(buffer, res, false, false);
             //res.dbKey=overlappingAlnRes.
-            writer.writeData(buffer, len, 0);
+            writer.writeData(buffer, len, allContaminations[i].key, 0);
         }
     }
 
