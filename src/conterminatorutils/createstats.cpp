@@ -222,14 +222,14 @@ int createstats(int argc, const char **argv, const Command& command) {
             resultData.push_back('\t');
             resultData.append(dbLength);
             resultData.push_back('\t');
+            resultData.append(Util::parseFastaHeader(header.getDataByDBKey(maxDbKey, thread_idx)));
+            resultData.push_back('\t');
             const TaxonNode* node= t.taxonNode(maxTaxId, false);
             if(node == NULL) {
                 resultData.append("Undef");
             }else{
                 resultData.append(node->name);
             }
-            resultData.push_back('\t');
-            resultData.append(Util::parseFastaHeader(header.getDataByDBKey(maxDbKey, thread_idx)));
             resultData.push_back('\t');
             resultData.append(SSTR(sequences.getSeqLens(sequences.getId(maxDbKey))));
             resultData.push_back('\n');
