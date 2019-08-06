@@ -16,6 +16,8 @@ void setConterminatorWorkflowDefaults(LocalParameters *p) {
     p->orfStartMode = 1;
     p->orfMinLength = 30;
     p->seqIdThr = 0.9;
+    p->maskMode = 0;
+    p->kmerSize = 15;
     p->alnLenThr = 100;
     p->orfMaxLength = 32734;
     p->forwardFrames= "1";
@@ -68,7 +70,13 @@ int conterminator(int argc, const char **argv, const Command &command) {
     cmd.addVariable("SPLITSEQ_PAR", par.createParameterString(par.splitsequence).c_str());
     cmd.addVariable("RESCORE_DIAGONAL_PAR", par.createParameterString(par.rescorediagonal).c_str());
     cmd.addVariable("THREADS_PAR", par.createParameterString(par.onlythreads).c_str());
+    cmd.addVariable("EXTRACT_FRAMES_PAR", par.createParameterString(par.extractframes).c_str());
+
+
+    par.kmerSize = 24;
     cmd.addVariable("KMERMATCHER_PAR", par.createParameterString(par.kmermatcher).c_str());
+    par.kmerSize = 15;
+    par.maxSeqLen = 1000000;
     cmd.addVariable("PREFILTER_PAR", par.createParameterString(par.prefilter).c_str());
 
 //    par.alphabetSize = alphabetSize;

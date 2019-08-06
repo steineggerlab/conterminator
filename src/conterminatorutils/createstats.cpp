@@ -160,7 +160,7 @@ int createstats(int argc, const char **argv, const Command& command) {
                     minTaxId = taxonList[taxId];
                 }
 
-                if(taxaCounter[taxId] > maxTaxCnt){
+                if(taxaCounter[taxId] >= maxTaxCnt){
                     maxTaxCnt = taxaCounter[taxId];
                     maxTaxId = taxonList[taxId];
                 }
@@ -173,13 +173,14 @@ int createstats(int argc, const char **argv, const Command& command) {
 
             std::set<std::pair<unsigned int, int> > minDbKeys;
             std::map<int, size_t> maxTaxon;
-
+            unsigned int maxDbKey=UINT_MAX;
             for(size_t i = 0; i < elements.size(); i++){
                 if(elements[i].ancestorTax == minTaxId){
-                    std::pair<unsigned int, int> pair =  std::make_pair(elements[i].dbKey, elements[i].currTaxa);
+                    std::pair<unsigned int, int> pair = std::make_pair(elements[i].dbKey, elements[i].currTaxa);
                     minDbKeys.insert(pair);
                 }
                 if(elements[i].ancestorTax == maxTaxId) {
+                    maxDbKey = std::min(elements[i].dbKey, maxDbKey);
                     maxTaxon[elements[i].currTaxa]++;
                 }
             }
@@ -196,8 +197,10 @@ int createstats(int argc, const char **argv, const Command& command) {
             std::set<std::pair<unsigned int, int>>::iterator minDbKeysIt = minDbKeys.begin();
             std::string taxons;
             std::string dbLength;
+            unsigned int outDBKey = UINT_MAX;
             for (;minDbKeysIt != minDbKeys.end(); minDbKeysIt++){
                 unsigned int dbKey = minDbKeysIt->first;
+                outDBKey = std::min(dbKey, outDBKey);
                 int taxId = minDbKeysIt->second;
                 resultData.append(Util::parseFastaHeader(header.getDataByDBKey(dbKey, thread_idx)));
                 dbLength.append(SSTR(sequences.getSeqLens(sequences.getId(dbKey))));
@@ -225,8 +228,12 @@ int createstats(int argc, const char **argv, const Command& command) {
             }else{
                 resultData.append(node->name);
             }
+            resultData.push_back('\t');
+            resultData.append(Util::parseFastaHeader(header.getDataByDBKey(maxDbKey, thread_idx)));
+            resultData.push_back('\t');
+            resultData.append(SSTR(sequences.getSeqLens(sequences.getId(maxDbKey))));
             resultData.push_back('\n');
-            writer.writeData(resultData.c_str(), resultData.size(), queryKey, thread_idx);
+            writer.writeData(resultData.c_str(), resultData.size(), outDBKey, thread_idx);
         }
     }
     Debug(Debug::INFO) << "\nDetected potentail conterminetaion in the following Taxons: \n" ;

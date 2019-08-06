@@ -18,23 +18,6 @@
 #include <omp.h>
 #endif
 
-size_t makeIntervalPos(unsigned int key, int pos) {
-    struct IntervalPos{
-        unsigned int key;
-        int pos;
-        size_t to_num() const
-        {
-            size_t num = static_cast<size_t>(key) << 32;
-            return num + pos;
-        }
-    };
-    IntervalPos intervalPos;
-    intervalPos.key = key;
-    intervalPos.pos = pos;
-    size_t retVal = intervalPos.to_num();
-    return retVal;
-}
-
 
 int extractalignments(int argc, const char **argv, const Command& command) {
     Parameters &par = Parameters::getInstance();
@@ -42,7 +25,6 @@ int extractalignments(int argc, const char **argv, const Command& command) {
     par.taxonList = "2,2157,2759,10239";
     // unclassified sequences , other sequences,  artifical sequences, retro virus, environmental samples
     par.blacklist = "12908,28384,81077,11632,340016,61964,48479,48510";
-    int reportDistinctTaxa = 2;
     par.parseParameters(argc, argv, command, true, 0, 0);
 
     std::string nodesFile = par.db1 + "_nodes.dmp";
@@ -112,18 +94,13 @@ int extractalignments(int argc, const char **argv, const Command& command) {
     }
 
     struct Contamination{
-        Contamination(unsigned int key, int start,
-                      int end, float seqId,
-                      unsigned int len, int range) : key(key), start(start),
-                                                     end(end), seqId(seqId),
-                                                     len(len), range(range) {}
+        Contamination(unsigned int key, int start, int end, unsigned int len)
+        : key(key), start(start), end(end), len(len) {}
         Contamination(){};
         unsigned int key;
         int start;
         int end;
-        float seqId;
         unsigned int len;
-        int range;
 
         // need for sorting the results
         static bool compareContaminationByKeyStartEnd(const Contamination &first, const Contamination &second) {
@@ -142,7 +119,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                 return false;
             return false;
         }
-    };
+      };
 
     std::vector<Contamination> allContaminations;
     Debug::Progress progress(reader.getSize());
@@ -150,7 +127,10 @@ int extractalignments(int argc, const char **argv, const Command& command) {
     {
         std::vector<Contamination> privateContaminations;
         size_t *taxaCounter = new size_t[taxonList.size()];
-        IntervalArray speciesRange;
+        IntervalArray ** speciesRanges = new IntervalArray*[taxonList.size()];
+        for(size_t i = 0; i < taxonList.size(); i++){
+            speciesRanges[i] = new IntervalArray();
+        }
         std::vector<Multipletaxas::TaxonInformation> elements;
 
         unsigned int thread_idx = 0;
@@ -164,10 +144,22 @@ int extractalignments(int argc, const char **argv, const Command& command) {
             elements.clear();
             memset(taxaCounter, 0, taxonList.size() * sizeof(size_t));
             unsigned int queryKey = reader.getDbKey(i);
-
+            unsigned int queryLen = reader.getSeqLens(i);
 
             unsigned int queryTaxon = Multipletaxas::getTaxon(queryKey, mapping);
-            if (queryTaxon == 0 || queryTaxon == UINT_MAX) {
+            if(queryTaxon == 0 || queryTaxon == UINT_MAX ){
+                continue;
+            }
+            unsigned int queryAncestorTaxon = UINT_MAX;
+
+            for (size_t j = 0; j < taxonList.size(); ++j) {
+                if (t.IsAncestor(taxonList[j], queryTaxon)) {
+                    queryAncestorTaxon = taxonList[j];
+                    break;
+                }
+            }
+
+            if (queryAncestorTaxon == UINT_MAX) {
                 continue;
             }
             char *data = reader.getData(i, thread_idx);
@@ -180,143 +172,48 @@ int extractalignments(int argc, const char **argv, const Command& command) {
             Multipletaxas::assignTaxonomy(elements, data, mapping, t, taxonList, blackList, taxaCounter);
             std::sort(elements.begin(), elements.end(), Multipletaxas::TaxonInformation::compareByTaxAndStart);
             int distinctTaxaCnt = 0;
-            //size_t maxTaxCnt = 0;
-            //unsigned int maxTaxAncestor = UINT_MAX;
-            for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
-            }
+
             // find max. taxa
             for (size_t taxId = 0; taxId < taxonList.size(); taxId++) {
                 bool hasTaxa = (taxaCounter[taxId] > 0);
                 distinctTaxaCnt += hasTaxa;
             }
-            // compute how much the distinct taxon coverage. The maximal taxa is contaminated by the minimal taxa
-
-            unsigned int maxTaxAncestor = UINT_MAX;
-            {
-                int prevTaxId = -1;
-                size_t currTaxCnt = 0;
-                size_t maxTaxCnt = 0;
-                int prevEnd = 0;
-
-                for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
-                    if (elements[elementIdx].ancestorTax == 0) {
-                        continue;
-                    }
-                    if (prevTaxId != elements[elementIdx].ancestorTax) {
-                        if (currTaxCnt > maxTaxCnt) {
-                            maxTaxAncestor = prevTaxId;
-                            maxTaxCnt = currTaxCnt;
-                        }
-                        prevEnd = -1;
-                        currTaxCnt = 0;
-                    }
-                    if (elements[elementIdx].start > prevEnd) {
-                        currTaxCnt += (elements[elementIdx].end - elements[elementIdx].start);
-                    }
-                    prevTaxId = elements[elementIdx].ancestorTax;
-                    prevEnd = elements[elementIdx].end;
-                }
-                if (currTaxCnt > maxTaxCnt) {
-                    maxTaxAncestor = prevTaxId;
-                }
-            }
-            // find max. taxa
-            // reportDistinctTaxa == 2
-            if (distinctTaxaCnt == reportDistinctTaxa) {
-                speciesRange.reset();
-                if (maxTaxAncestor == UINT_MAX) {
-                    Debug(Debug::WARNING) << "Max Tax Id: " << maxTaxAncestor << "!\n";
-                    for (size_t i = 0; i < taxonList.size(); i++) {
-                        Debug(Debug::WARNING) << taxaCounter[i] << "\n";
-                    }
+            if (distinctTaxaCnt > 1) {
+                for (size_t i = 0; i < taxonList.size(); i++) {
+                    speciesRanges[i]->reset();
                 }
 
                 // fill up interval tree with elements
                 for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
-                    if (static_cast<unsigned int>(elements[elementIdx].ancestorTax) != maxTaxAncestor) {
+                    if (static_cast<unsigned int>(elements[elementIdx].ancestorTax) != queryAncestorTaxon) {
                         Matcher::result_t res = Matcher::parseAlignmentRecord(elements[elementIdx].data, true);
-                        speciesRange.insert(res.qStartPos, res.qEndPos);
+                        speciesRanges[ancestorTax2int[elements[elementIdx].ancestorTax]]->insert(res.qStartPos,
+                                                                                                 res.qEndPos);
                     }
                 }
-                speciesRange.buildRanges();
-
-                int *maxTaxaIdForRange = new int[speciesRange.getRangesSize()];
-                memset(maxTaxaIdForRange, 0, speciesRange.getRangesSize() * sizeof(int));
-                // count taxons per range
-                {
-                    int *rangeSizes = new int[speciesRange.getRangesSize() * taxonList.size()];
-                    memset(rangeSizes, 0, speciesRange.getRangesSize() * taxonList.size() * sizeof(int));
-                    int *maxCntForRange = new int[speciesRange.getRangesSize()];
-                    memset(maxCntForRange, 0, speciesRange.getRangesSize() * sizeof(int));
-
-                    std::set <std::pair<int, unsigned int>> rangeEntry;
-                    for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
-                        if (elements[elementIdx].ancestorTax == 0 || elements[elementIdx].start == -1 || elements[elementIdx].end == -1) {
-                            continue;
-                        }
-                        Matcher::result_t res = Matcher::parseAlignmentRecord(elements[elementIdx].data, true);
-                        bool overlapsWithOtherSpecie = speciesRange.doesOverlap(res.qStartPos, res.qEndPos);
-                        if (overlapsWithOtherSpecie == true) {
-                            int rangeIndex = speciesRange.findIndex(res.qStartPos, res.qEndPos);
-                            elements[elementIdx].range = rangeIndex;
-                            std::pair<int, unsigned int> rangeQuery = std::make_pair(rangeIndex, res.dbKey);
-                            const bool existsAlready = rangeEntry.find(rangeQuery) != rangeEntry.end();
-                            if (existsAlready == false) {
-                                rangeEntry.insert(rangeQuery);
-                                int ancestorIdx = ancestorTax2int[elements[elementIdx].ancestorTax];
-                                rangeSizes[rangeIndex * taxonList.size() + ancestorIdx] += 1;
-                                if (rangeSizes[rangeIndex * taxonList.size() + ancestorIdx] > maxCntForRange[rangeIndex]) {
-                                    maxCntForRange[rangeIndex] = rangeSizes[rangeIndex * taxonList.size() + ancestorIdx];
-                                    maxTaxaIdForRange[rangeIndex] = elements[elementIdx].ancestorTax;
-                                }
-                            }
-                        }
-                    }
-                    delete[] rangeSizes;
-                    delete[] maxCntForRange;
+                for (size_t i = 0; i < taxonList.size(); i++) {
+                    speciesRanges[i]->buildRanges();
                 }
 
-                //  pick conterminated
-                for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
-                    if (elements[elementIdx].range != -1) {
-                        Matcher::result_t res = Matcher::parseAlignmentRecord(elements[elementIdx].data, true);
-                        int rangeIndex = speciesRange.findIndex(res.qStartPos, res.qEndPos);
-                        // here we write only the contermination in the private ranges
-                        if(elements[elementIdx].ancestorTax != maxTaxaIdForRange[rangeIndex]){
-                            unsigned int contermKey;
-                            int qStartPos = std::min(res.qStartPos, res.qEndPos);
-                            int qEndPos = std::max(res.qStartPos, res.qEndPos);
-                            int dbStartPos = std::min(res.dbStartPos, res.dbEndPos);
-                            int dbEndPos = std::max(res.dbStartPos, res.dbEndPos);
-                            int contermStart, contermEnd;
-                            unsigned int contermLen;
-                            if (t.IsAncestor(maxTaxaIdForRange[rangeIndex], queryTaxon) == false) {
-                                contermKey = queryKey;
-                                contermStart = qStartPos;
-                                contermEnd = qEndPos;
-                                contermLen = res.qLen;
-                            }else {
-                                contermKey = res.dbKey;
-                                contermStart = dbStartPos;
-                                contermEnd = dbEndPos;
-                                contermLen = res.dbLen;
-                            }
-
-                            privateContaminations.push_back(Contamination(contermKey, contermStart, contermEnd, res.seqId, contermLen, elements[elementIdx].range ));
-
-                        }
+                for (size_t i = 0; i < taxonList.size(); i++) {
+                    for (size_t j = 0; j < speciesRanges[i]->getRangesSize(); j++) {
+                        IntervalArray::Range range = speciesRanges[i]->getRange(j);
+                        privateContaminations.push_back(Contamination(queryKey, range.start, range.end, queryLen));
                     }
                 }
-                delete [] maxTaxaIdForRange;
             }
         }
-
 
 #pragma omp critical
         {
             allContaminations.insert(allContaminations.end(), privateContaminations.begin(), privateContaminations.end());
         };
         delete[] taxaCounter;
+
+        for(size_t i = 0; i < taxonList.size(); i++){
+            delete speciesRanges[i];
+        }
+        delete [] speciesRanges;
     }
 
     omptl::sort(allContaminations.begin(), allContaminations.end(), Contamination::compareContaminationByKeyStartEnd);
@@ -330,7 +227,6 @@ int extractalignments(int argc, const char **argv, const Command& command) {
         }else{
             if(allContaminations[i].start <= (allContaminations[writePos].end+1)){
                 allContaminations[writePos].end = std::max(allContaminations[i].end, allContaminations[writePos].end);
-                allContaminations[writePos].seqId = std::max(allContaminations[i].seqId, allContaminations[writePos].seqId);
             }else{
                 writePos++;
                 allContaminations[writePos]=allContaminations[i];

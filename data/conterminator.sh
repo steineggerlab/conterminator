@@ -55,36 +55,43 @@ fi
 
 if notExists "$TMP_PATH/contam_region.dbtype"; then
     # shellcheck disable=SC2086
-    $RUNNER "$MMSEQS" extractalignedregion "${DB}" "${DB}" "$TMP_PATH/contam_aln" "$TMP_PATH/contam_region" ${EXTRACTALIGNMENT} \
+    $RUNNER "$MMSEQS" extractalignedregion "${DB}" "${DB}" "$TMP_PATH/contam_aln" "$TMP_PATH/contam_region" ${THREADS_PAR} \
         || fail "extractalignedregion step died"
 fi
 
+cp "$TMP_PATH/contam_region.index" "$TMP_PATH/contam_region.old.index"
 awk '{print NR"\t"$2"\t"$3}' "$TMP_PATH/contam_region.index" > "$TMP_PATH/contam_region.new.index"
 awk '{print NR"\t"$1}'  "$TMP_PATH/contam_region.index"  > "$TMP_PATH/contam_region.mapping"
 mv "$TMP_PATH/contam_region.new.index" "$TMP_PATH/contam_region.index"
 
+if notExists "$TMP_PATH/contam_region_rev.dbtype"; then
+    # shellcheck disable=SC2086
+    "$MMSEQS" extractframes "$TMP_PATH/contam_region" "$TMP_PATH/contam_region_rev" ${EXTRACT_FRAMES_PAR}  \
+        || fail "Extractframes died"
+fi
+
 #TODO
 if notExists "$TMP_PATH/contam_region_pref.dbtype"; then
     # shellcheck disable=SC2086
-    $RUNNER "$MMSEQS" prefilter "$TMP_PATH/db_rev_split" "$TMP_PATH/contam_region" "$TMP_PATH/contam_region_pref" ${PREFILTER_PAR} \
+    $RUNNER "$MMSEQS" prefilter "$TMP_PATH/db_rev_split" "$TMP_PATH/contam_region_rev" "$TMP_PATH/contam_region_pref" ${PREFILTER_PAR} \
         || fail "createdb step died"
 fi
 
 if notExists "$TMP_PATH/contam_region_aln.dbtype"; then
     # shellcheck disable=SC2086
-    $RUNNER "$MMSEQS" align "$TMP_PATH/db_rev_split" "$TMP_PATH/contam_region" "$TMP_PATH/contam_region_pref" "$TMP_PATH/contam_region_aln" ${ALIGN_PAR} \
-        || fail "createdb step died"
+    $RUNNER "$MMSEQS" rescorediagonal "$TMP_PATH/db_rev_split" "$TMP_PATH/contam_region_rev" "$TMP_PATH/contam_region_pref" "$TMP_PATH/contam_region_aln" ${RESCORE_DIAGONAL_PAR} \
+        || fail "rescorediagonal2 step died"
 fi
 
 if notExists "${TMP_PATH}/contam_region_aln_swap.dbtype"; then
      # shellcheck disable=SC2086
-    "$MMSEQS" swapresults "$TMP_PATH/db_rev_split" "$TMP_PATH/contam_region" "${TMP_PATH}/contam_region_aln" "${TMP_PATH}/contam_region_aln_swap" ${SWAP_PAR} \
+    "$MMSEQS" swapresults "$TMP_PATH/db_rev_split" "$TMP_PATH/contam_region_rev" "${TMP_PATH}/contam_region_aln" "${TMP_PATH}/contam_region_aln_swap" ${SWAP_PAR} \
         || fail "Swapresults pref died"
 fi
 
-if notExists "$TMP_PATH/contam_region_aln_swap_offset"; then
+if notExists "$TMP_PATH/contam_region_aln_swap_offset.dbtype"; then
     # shellcheck disable=SC2086
-    "$MMSEQS" offsetalignment "$TMP_PATH/contam_region" "$TMP_PATH/contam_region" "${DB}" "$TMP_PATH/db_rev_split"  "$TMP_PATH/contam_region_aln_swap" "$TMP_PATH/contam_region_aln_swap_offset" ${THREADS_PAR} \
+    "$MMSEQS" offsetalignment "$TMP_PATH/contam_region" "$TMP_PATH/contam_region_rev" "${DB}" "$TMP_PATH/db_rev_split"  "$TMP_PATH/contam_region_aln_swap" "$TMP_PATH/contam_region_aln_swap_offset" ${THREADS_PAR} \
         || fail "rescorediagonal step died"
 fi
 
