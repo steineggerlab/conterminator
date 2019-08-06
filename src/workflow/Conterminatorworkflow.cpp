@@ -25,7 +25,7 @@ void setConterminatorWorkflowDefaults(LocalParameters *p) {
     p->maxSeqLen = 1000;
     p->covThr = 0.0;
     p->sequenceOverlap = 0;
-    p->kmersPerSequence = 30;
+    p->kmersPerSequence = 100;
     p->rescoreMode = 2;
 }
 
