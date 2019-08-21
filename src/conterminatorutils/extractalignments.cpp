@@ -1,4 +1,4 @@
-#include "multipletaxas.h"
+#include "TaxonUtils.h"
 #include "NcbiTaxonomy.h"
 #include "Parameters.h"
 #include "DBWriter.h"
@@ -8,10 +8,10 @@
 #include "filterdb.h"
 #include <algorithm>
 #include "Matcher.h"
-#include "IntervalTree.h"
 #include "IntervalArray.h"
 #include <set>
 #include <omptl/omptl_algorithm>
+#include <mmseqs/src/taxonomy/TaxonomyExpression.h>
 
 
 #ifdef OPENMP
@@ -21,33 +21,9 @@
 
 int extractalignments(int argc, const char **argv, const Command& command) {
     Parameters &par = Parameters::getInstance();
-    // bacteria, archaea, eukaryotic, virus
-    par.taxonList = "2,2157,2759,10239";
-    // unclassified sequences , other sequences,  artifical sequences, retro virus, environmental samples
-    par.blacklist = "12908,28384,81077,11632,340016,61964,48479,48510";
     par.parseParameters(argc, argv, command, true, 0, 0);
 
-    std::string nodesFile = par.db1 + "_nodes.dmp";
-    std::string namesFile = par.db1 + "_names.dmp";
-    std::string mergedFile = par.db1 + "_merged.dmp";
-    std::string delnodesFile = par.db1 + "_delnodes.dmp";
-    if (FileUtil::fileExists(nodesFile.c_str())
-        && FileUtil::fileExists(namesFile.c_str())
-        && FileUtil::fileExists(mergedFile.c_str())
-        && FileUtil::fileExists(delnodesFile.c_str())) {
-    } else if (FileUtil::fileExists("nodes.dmp")
-               && FileUtil::fileExists("names.dmp")
-               && FileUtil::fileExists("merged.dmp")
-               && FileUtil::fileExists("delnodes.dmp")) {
-        nodesFile = "nodes.dmp";
-        namesFile = "names.dmp";
-        mergedFile = "merged.dmp";
-        delnodesFile = "delnodes.dmp";
-    } else {
-        Debug(Debug::ERROR)
-                << "names.dmp, nodes.dmp, merged.dmp or delnodes.dmp from NCBI taxdump could not be found!\n";
-        EXIT(EXIT_FAILURE);
-    }
+
     std::vector<std::pair<unsigned int, unsigned int>> mapping;
     if (FileUtil::fileExists(std::string(par.db1 + "_mapping").c_str()) == false) {
         Debug(Debug::ERROR) << par.db1 + "_mapping" << " does not exist. Please create the taxonomy mapping!\n";
@@ -66,25 +42,12 @@ int extractalignments(int argc, const char **argv, const Command& command) {
     DBWriter writer(par.db3.c_str(), par.db3Index.c_str(), 1, par.compressed, reader.getDbtype());
     writer.open();
 
-    Debug(Debug::INFO) << "Loading NCBI taxonomy...\n";
-    NcbiTaxonomy t(namesFile, nodesFile, mergedFile);
+    NcbiTaxonomy * t = NcbiTaxonomy::openTaxonomy(par.db1);
 
     Debug(Debug::INFO) << "Add taxonomy information ...\n";
 
-
-    // a few NCBI taxa are blacklisted by default, they contain unclassified sequences (e.g. metagenomes) or other sequences (e.g. plasmids)
-    // if we do not remove those, a lot of sequences would be classified as Root, even though they have a sensible LCA
-    std::vector<std::string> taxlistStr = Util::split(par.taxonList, ",");
-    std::vector<int> taxonList;
-    int maxTaxa = 0;
-    for (size_t i = 0; i < taxlistStr.size(); ++i) {
-        taxonList.push_back(Util::fast_atoi<int>(taxlistStr[i].c_str()));
-        maxTaxa = std::max(taxonList[i], maxTaxa);
-    }
-    int *ancestorTax2int = new int[maxTaxa + 1];
-    for (size_t i = 0; i < taxonList.size(); ++i) {
-        ancestorTax2int[taxonList[i]] = i;
-    }
+    TaxonomyExpression taxonomyExpression(par.taxonList);
+    size_t taxTermCount = taxonomyExpression.getTaxTerms().size();
 
     std::vector<std::string> blacklistStr = Util::split(par.blacklist, ",");
     std::vector<int> blackList;
@@ -95,7 +58,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
 
     struct Contamination{
         Contamination(unsigned int key, int start, int end, unsigned int len)
-        : key(key), start(start), end(end), len(len) {}
+                : key(key), start(start), end(end), len(len) {}
         Contamination(){};
         unsigned int key;
         int start;
@@ -119,19 +82,19 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                 return false;
             return false;
         }
-      };
+    };
 
     std::vector<Contamination> allContaminations;
     Debug::Progress progress(reader.getSize());
 #pragma omp parallel
     {
         std::vector<Contamination> privateContaminations;
-        size_t *taxaCounter = new size_t[taxonList.size()];
-        IntervalArray ** speciesRanges = new IntervalArray*[taxonList.size()];
-        for(size_t i = 0; i < taxonList.size(); i++){
+        size_t *taxaCounter = new size_t[taxTermCount];
+        IntervalArray ** speciesRanges = new IntervalArray*[taxTermCount];
+        for(size_t i = 0; i < taxTermCount; i++){
             speciesRanges[i] = new IntervalArray();
         }
-        std::vector<Multipletaxas::TaxonInformation> elements;
+        std::vector<TaxonUtils::TaxonInformation> elements;
 
         unsigned int thread_idx = 0;
 #ifdef OPENMP
@@ -142,24 +105,25 @@ int extractalignments(int argc, const char **argv, const Command& command) {
         for (size_t i = 0; i < reader.getSize(); ++i) {
             progress.updateProgress();
             elements.clear();
-            memset(taxaCounter, 0, taxonList.size() * sizeof(size_t));
+            memset(taxaCounter, 0, taxTermCount * sizeof(size_t));
             unsigned int queryKey = reader.getDbKey(i);
             unsigned int queryLen = reader.getSeqLens(i);
 
-            unsigned int queryTaxon = Multipletaxas::getTaxon(queryKey, mapping);
+            unsigned int queryTaxon = TaxonUtils::getTaxon(queryKey, mapping);
             if(queryTaxon == 0 || queryTaxon == UINT_MAX ){
                 continue;
             }
-            unsigned int queryAncestorTaxon = UINT_MAX;
+            unsigned int queryAncestorTermId = UINT_MAX;
 
-            for (size_t j = 0; j < taxonList.size(); ++j) {
-                if (t.IsAncestor(taxonList[j], queryTaxon)) {
-                    queryAncestorTaxon = taxonList[j];
+            for (size_t j = 0; j < taxTermCount; ++j) {
+                int taxIndex = taxonomyExpression.isAncestorOf(*t, queryTaxon);
+                if (taxIndex != -1) {
+                    queryAncestorTermId = taxIndex;
                     break;
                 }
             }
 
-            if (queryAncestorTaxon == UINT_MAX) {
+            if (queryAncestorTermId == UINT_MAX) {
                 continue;
             }
             char *data = reader.getData(i, thread_idx);
@@ -169,33 +133,32 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                 continue;
             }
             // find taxonomical information
-            Multipletaxas::assignTaxonomy(elements, data, mapping, t, taxonList, blackList, taxaCounter);
-            std::sort(elements.begin(), elements.end(), Multipletaxas::TaxonInformation::compareByTaxAndStart);
+            TaxonUtils::assignTaxonomy(elements, data, mapping, *t, taxonomyExpression, blackList, taxaCounter);
+            std::sort(elements.begin(), elements.end(), TaxonUtils::TaxonInformation::compareByTaxAndStart);
             int distinctTaxaCnt = 0;
 
             // find max. taxa
-            for (size_t taxId = 0; taxId < taxonList.size(); taxId++) {
-                bool hasTaxa = (taxaCounter[taxId] > 0);
+            for (size_t taxTermId = 0; taxTermId < taxTermCount; taxTermId++) {
+                bool hasTaxa = (taxaCounter[taxTermId] > 0);
                 distinctTaxaCnt += hasTaxa;
             }
             if (distinctTaxaCnt > 1) {
-                for (size_t i = 0; i < taxonList.size(); i++) {
+                for (size_t i = 0; i < taxTermCount; i++) {
                     speciesRanges[i]->reset();
                 }
 
                 // fill up interval tree with elements
                 for (size_t elementIdx = 0; elementIdx < elements.size(); elementIdx++) {
-                    if (static_cast<unsigned int>(elements[elementIdx].ancestorTax) != queryAncestorTaxon) {
+                    if (static_cast<unsigned int>(elements[elementIdx].termId) != queryAncestorTermId) {
                         Matcher::result_t res = Matcher::parseAlignmentRecord(elements[elementIdx].data, true);
-                        speciesRanges[ancestorTax2int[elements[elementIdx].ancestorTax]]->insert(res.qStartPos,
-                                                                                                 res.qEndPos);
+                        speciesRanges[elements[elementIdx].termId]->insert(res.qStartPos, res.qEndPos);
                     }
                 }
-                for (size_t i = 0; i < taxonList.size(); i++) {
+                for (size_t i = 0; i < taxTermCount; i++) {
                     speciesRanges[i]->buildRanges();
                 }
 
-                for (size_t i = 0; i < taxonList.size(); i++) {
+                for (size_t i = 0; i < taxTermCount; i++) {
                     for (size_t j = 0; j < speciesRanges[i]->getRangesSize(); j++) {
                         IntervalArray::Range range = speciesRanges[i]->getRange(j);
                         privateContaminations.push_back(Contamination(queryKey, range.start, range.end, queryLen));
@@ -210,7 +173,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
         };
         delete[] taxaCounter;
 
-        for(size_t i = 0; i < taxonList.size(); i++){
+        for(size_t i = 0; i < taxTermCount; i++){
             delete speciesRanges[i];
         }
         delete [] speciesRanges;
@@ -236,9 +199,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
     }
     writePos++;
     allContaminations.resize (writePos);
-//    for(size_t i = 0; i < allContaminations.size(); i++){
-//        std::cout << allContaminations[i].key << "\t" << allContaminations[i].start << "\t" << allContaminations[i].end << std::endl;
-//    }
+
     {
         char buffer[4096];
 
@@ -258,8 +219,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
             writer.writeData(buffer, len, allContaminations[i].key, 0);
         }
     }
-
-    delete[] ancestorTax2int;
+    delete t;
     writer.close();
     reader.close();
     return EXIT_SUCCESS;

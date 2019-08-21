@@ -27,9 +27,38 @@ void setConterminatorWorkflowDefaults(LocalParameters *p) {
     p->sequenceOverlap = 0;
     p->kmersPerSequence = 100;
     p->rescoreMode = 2;
+    p->minDiagScoreThr = p->alnLenThr;
+    // leave ungapped alignment untouched
+    if(p->alignmentMode != Parameters::ALIGNMENT_MODE_UNGAPPED){
+        p->alignmentMode = Parameters::ALIGNMENT_MODE_SCORE_COV_SEQID;
+    }
+    //p->orfLongest = true;
+    p->exactKmerMatching = true;
+//    if ( p->PARAM_DIAGONAL_SCORING.wasSet == false) {
+//        p->diagonalScoring = 0;
+//    }
+    if ( p->PARAM_STRAND.wasSet == false) {
+        p->strand = 2;
+    }
+    if ( p->PARAM_K.wasSet == false) {
+        p->kmerSize = 15;
+    }
+    if (  p->PARAM_MAX_SEQ_LEN.wasSet == false) {
+        p->maxSeqLen = 10000;
+    }
+    if( p->PARAM_GAP_OPEN.wasSet == false){
+        p->gapOpen = 5;
+    }
+    if( p->PARAM_GAP_EXTEND.wasSet  == false){
+        p->gapExtend = 2;
+    }
+    // (Bacteria, Archaea), Fungi, Animalia, Plantae, Rest of Eukaryota
+    p->taxonList = "(2,2157),4751,33208,33090,(2759,!4751,!33208,!33090)";
+    // virus, unclassified sequences, other sequences,  artifical sequences, retro virus, environmental samples
+    p->blacklist = "10239,12908,28384,81077,11632,340016,61964,48479,48510";
 }
 
-int conterminator(int argc, const char **argv, const Command &command) {
+int conterminatorworkflow(int argc, const char **argv, const Command &command) {
     LocalParameters &par = LocalParameters::getLocalInstance();
     setConterminatorWorkflowDefaults(&par);
     par.parseParameters(argc, argv, command, true, 0, MMseqsParameter::COMMAND_COMMON);

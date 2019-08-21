@@ -1,4 +1,10 @@
 //
+// Created by Martin Steinegger on 2019-08-20.
+//
+
+#ifndef CONTERMINATOR_TAXONUTILS_H
+#define CONTERMINATOR_TAXONUTILS_H
+//
 // Created by Martin Steinegger on 2019-07-17.
 //
 
@@ -7,12 +13,13 @@
 
 #include <string>
 #include <algorithm>
+#include <mmseqs/src/taxonomy/TaxonomyExpression.h>
 #include "Util.h"
 #include "DBWriter.h"
 #include "filterdb.h"
 #include "NcbiTaxonomy.h"
 
-class Multipletaxas{
+class TaxonUtils{
 public:
     struct RangEntry {
         unsigned int range;
@@ -38,10 +45,10 @@ public:
 
     struct TaxonInformation{
         TaxonInformation(unsigned int dbKey, int currTaxa, int ancestorTax, int start, int end, char * data) :
-                dbKey(dbKey), currTaxa(currTaxa), ancestorTax(ancestorTax), start(start), end(end), data(data), overlaps(false), range(-1){}
+                dbKey(dbKey), currTaxa(currTaxa), termId(ancestorTax), start(start), end(end), data(data), overlaps(false), range(-1){}
         unsigned int dbKey;
         int currTaxa;
-        int ancestorTax;
+        int termId;
         int start;
         int end;
         char * data;
@@ -52,9 +59,9 @@ public:
                 return true;
             if (second.range < first.range)
                 return false;
-            if(first.ancestorTax < second.ancestorTax )
+            if(first.termId < second.termId )
                 return true;
-            if(second.ancestorTax < first.ancestorTax )
+            if(second.termId < first.termId )
                 return false;
             if(first.currTaxa < second.currTaxa )
                 return true;
@@ -64,9 +71,9 @@ public:
         }
 
         static bool compareByTaxAndStart(const TaxonInformation &first, const TaxonInformation &second) {
-            if (first.ancestorTax < second.ancestorTax)
+            if (first.termId < second.termId)
                 return true;
-            if (second.ancestorTax < first.ancestorTax)
+            if (second.termId < first.termId)
                 return false;
             if(first.start < second.start )
                 return true;
@@ -92,17 +99,14 @@ public:
     }
 
     static std::vector<TaxonInformation> assignTaxonomy(std::vector<TaxonInformation>  &elements,
-                                                        char *data,
-                                                        std::vector<std::pair<unsigned int, unsigned int>> & mapping,
-                                                        NcbiTaxonomy & t,
-                                                        std::vector<int> &taxonList,
+                                                        char *data, std::vector<std::pair<unsigned int, unsigned int>> & mapping,
+                                                        NcbiTaxonomy & t, TaxonomyExpression & taxonomyExpression,
                                                         std::vector<int> &blacklist,
                                                         size_t * taxaCounter) {
         elements.clear();
         const char * entry[255];
         while (*data != '\0') {
-
-            bool isAncestor = false;
+            int termIndex;
             const size_t columns = Util::getWordsOfLine(data, entry, 255);
             if (columns == 0) {
                 data = Util::skipLine(data);
@@ -119,22 +123,15 @@ public:
                     goto next;
                 }
             }
-
-            size_t j;
-            for (j = 0; j < taxonList.size(); ++j) {
-                bool isTaxaAncestor = t.IsAncestor(taxonList[j], taxon);
-                taxaCounter[j] += isTaxaAncestor;
-                isAncestor = std::max(isAncestor, isTaxaAncestor);
-                if (isAncestor == true) {
-                    break;
-                }
-            }
-            if (isAncestor) {
+            termIndex = taxonomyExpression.isAncestorOf(t, taxon);
+            if(termIndex != -1) {
+                taxaCounter[termIndex]++;
                 int startPos = Util::fast_atoi<int>(entry[4]);
                 int endPos   = Util::fast_atoi<int>(entry[5]);
-                elements.push_back(TaxonInformation(id, taxon, taxonList[j], std::min(startPos, endPos), std::max(startPos, endPos), data));
-            } else {
+                elements.push_back(TaxonInformation(id, taxon, termIndex, std::min(startPos, endPos), std::max(startPos, endPos), data));
+            }else{
                 elements.push_back(TaxonInformation(id, taxon, 0, -1, -1, data));
+
             }
             next:
             data = Util::skipLine(data);
@@ -144,3 +141,5 @@ public:
 };
 
 #endif //CONTERMINATOR_MULTIPLETAXAS_H
+
+#endif //CONTERMINATOR_TAXONUTILS_H
