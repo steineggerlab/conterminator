@@ -49,7 +49,7 @@ fi
 
 if notExists "$TMP_PATH/contam_aln.dbtype"; then
     # shellcheck disable=SC2086
-    $RUNNER "$MMSEQS" extractalignments "${DB}"  "$TMP_PATH/aln_offset" "$TMP_PATH/contam_aln" ${THREADS_PAR} \
+    $RUNNER "$MMSEQS" extractalignments "${DB}"  "$TMP_PATH/aln_offset" "$TMP_PATH/contam_aln" ${EXTRACTALIGNMENTS_PAR} \
         || fail "extractalignment step died"
 fi
 
@@ -101,7 +101,7 @@ mv "$TMP_PATH/contam_region_aln_swap_offset.new.index" "$TMP_PATH/contam_region_
 
 if notExists  "$TMP_PATH/contam_region_aln_swap_offset_stats.dbtype"; then
     # shellcheck disable=SC2086
-    $RUNNER "$MMSEQS" createstats "${DB}" "$TMP_PATH/contam_region_aln_swap_offset" "$TMP_PATH/contam_region_aln_swap_offset_stats" ${THREADS_PAR} \
+    $RUNNER "$MMSEQS" createstats "${DB}" "$TMP_PATH/contam_region_aln_swap_offset" "$TMP_PATH/contam_region_aln_swap_offset_stats" ${CREATESTATS_PAR} \
         || fail "createtsv step died"
 fi
 

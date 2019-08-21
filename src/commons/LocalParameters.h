@@ -19,30 +19,33 @@ public:
     std::vector<MMseqsParameter*> conterminatorworkflow;
     std::vector<MMseqsParameter*> conterminatorSearch;
     std::vector<MMseqsParameter*> extractalignments;
+    std::vector<MMseqsParameter*> createstats;
     std::vector<MMseqsParameter*> distanceton;
 private:
     LocalParameters() :
             Parameters(){
 
-
-
-        // strucclust
-        conterminatorSearch = removeParameter(searchworkflow, PARAM_MAX_SEQS);
-        conterminatorworkflow = combineList(conterminatorworkflow, conterminatorSearch);
-        conterminatorworkflow.push_back(&PARAM_REMOVE_TMP_FILES);
-        conterminatorworkflow.push_back(&PARAM_RUNNER);
-
-        extractalignments.push_back(&PARAM_SUB_MAT);
-        extractalignments.push_back(&PARAM_E);
-        extractalignments.push_back(&PARAM_MIN_SEQ_ID);
-        extractalignments.push_back(&PARAM_MIN_ALN_LEN);
+        // extractalignments
+        extractalignments.push_back(&PARAM_BLACKLIST);
+        extractalignments.push_back(&PARAM_TAXON_LIST);
         extractalignments.push_back(&PARAM_THREADS);
         extractalignments.push_back(&PARAM_V);
-
+        // createstats
+        createstats.push_back(&PARAM_BLACKLIST);
+        createstats.push_back(&PARAM_TAXON_LIST);
+        createstats.push_back(&PARAM_THREADS);
+        createstats.push_back(&PARAM_V);
         // distanceton
         distanceton.push_back(&PARAM_EXTRACT_MODE);
         distanceton.push_back(&PARAM_THREADS);
         distanceton.push_back(&PARAM_V);
+        // conterminator
+        conterminatorSearch = removeParameter(searchworkflow, PARAM_MAX_SEQS);
+        conterminatorworkflow = combineList(conterminatorworkflow, conterminatorSearch);
+        conterminatorworkflow = combineList(conterminatorworkflow, createstats);
+        conterminatorworkflow = combineList(conterminatorworkflow, extractalignments);
+        conterminatorworkflow.push_back(&PARAM_REMOVE_TMP_FILES);
+        conterminatorworkflow.push_back(&PARAM_RUNNER);
     }
 
     LocalParameters(LocalParameters const&);

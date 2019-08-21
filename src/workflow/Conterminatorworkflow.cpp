@@ -95,6 +95,8 @@ int conterminatorworkflow(int argc, const char **argv, const Command &command) {
 
     cmd.addVariable("REMOVE_TMP", par.removeTmpFiles ? "TRUE" : NULL);
     cmd.addVariable("RUNNER", par.runner.c_str());
+    cmd.addVariable("EXTRACTALIGNMENTS_PAR", par.createParameterString(par.extractalignments).c_str());
+    cmd.addVariable("CREATESTATS_PAR", par.createParameterString(par.createstats).c_str());
 
     cmd.addVariable("SPLITSEQ_PAR", par.createParameterString(par.splitsequence).c_str());
     cmd.addVariable("RESCORE_DIAGONAL_PAR", par.createParameterString(par.rescorediagonal).c_str());
