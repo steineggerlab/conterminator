@@ -64,33 +64,15 @@ int conterminatorworkflow(int argc, const char **argv, const Command &command) {
     par.parseParameters(argc, argv, command, true, 0, MMseqsParameter::COMMAND_COMMON);
 
     CommandCaller cmd;
-    std::string tmpPath = par.filenames.back();
-    if (FileUtil::directoryExists(tmpPath.c_str()) == false) {
-        Debug(Debug::INFO) << "Temporary folder " << tmpPath << " does not exist or is not a directory.\n";
-        if (FileUtil::makeDir(tmpPath.c_str()) == false) {
-            Debug(Debug::ERROR) << "Could not crate tmp folder " << tmpPath << ".\n";
-            return EXIT_FAILURE;
-        } else {
-            Debug(Debug::INFO) << "Created directory " << tmpPath << "\n";
-        }
+    std::string tmpDir = par.db3;
+    std::string hash = SSTR(par.hashParameter(par.filenames, par.linclustworkflow));
+    if (par.reuseLatest) {
+        hash = FileUtil::getHashFromSymLink(tmpDir + "/latest");
     }
-    size_t hash = par.hashParameter(par.filenames, par.conterminatorworkflow);
-    std::string tmpDir = tmpPath + "/" + SSTR(hash);
-    if (FileUtil::directoryExists(tmpDir.c_str()) == false) {
-        if (FileUtil::makeDir(tmpDir.c_str()) == false) {
-            Debug(Debug::ERROR) << "Could not create sub folder in temporary directory " << tmpDir << ".\n";
-            return EXIT_FAILURE;
-        }
-    }
+    tmpDir = FileUtil::createTemporaryDirectory(tmpDir, hash);
+
     par.filenames.pop_back();
-    FileUtil::symlinkAlias(tmpDir, "latest");
-    char *p = realpath(tmpDir.c_str(), NULL);
-    if (p == NULL) {
-        Debug(Debug::ERROR) << "Could not get real path of " << tmpDir << "!\n";
-        EXIT(EXIT_FAILURE);
-    }
-    par.filenames.push_back(p);
-    free(p);
+    par.filenames.push_back(tmpDir);
 
 
     cmd.addVariable("REMOVE_TMP", par.removeTmpFiles ? "TRUE" : NULL);
