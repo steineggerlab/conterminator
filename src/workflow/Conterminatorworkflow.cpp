@@ -97,8 +97,10 @@ int conterminatorworkflow(int argc, const char **argv, const Command &command) {
     cmd.addVariable("RUNNER", par.runner.c_str());
     cmd.addVariable("EXTRACTALIGNMENTS_PAR", par.createParameterString(par.extractalignments).c_str());
     cmd.addVariable("CREATESTATS_PAR", par.createParameterString(par.createstats).c_str());
-
+    int prevCompressed = par.compressed;
+    par.compressed = 1;
     cmd.addVariable("SPLITSEQ_PAR", par.createParameterString(par.splitsequence).c_str());
+    par.compressed = prevCompressed;
     cmd.addVariable("RESCORE_DIAGONAL_PAR", par.createParameterString(par.rescorediagonal).c_str());
     cmd.addVariable("THREADS_PAR", par.createParameterString(par.onlythreads).c_str());
     cmd.addVariable("EXTRACT_FRAMES_PAR", par.createParameterString(par.extractframes).c_str());
