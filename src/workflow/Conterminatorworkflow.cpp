@@ -92,6 +92,7 @@ int conterminatorworkflow(int argc, const char **argv, const Command &command) {
     cmd.addVariable("KMERMATCHER_PAR", par.createParameterString(par.kmermatcher).c_str());
     par.kmerSize = 15;
     par.maxSeqLen = 1000000;
+    par.maskMode = 1;
     cmd.addVariable("PREFILTER_PAR", par.createParameterString(par.prefilter).c_str());
 
 //    par.alphabetSize = alphabetSize;
