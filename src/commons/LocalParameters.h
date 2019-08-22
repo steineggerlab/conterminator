@@ -44,8 +44,6 @@ private:
         conterminatorworkflow = combineList(conterminatorworkflow, conterminatorSearch);
         conterminatorworkflow = combineList(conterminatorworkflow, createstats);
         conterminatorworkflow = combineList(conterminatorworkflow, extractalignments);
-        conterminatorworkflow.push_back(&PARAM_REMOVE_TMP_FILES);
-        conterminatorworkflow.push_back(&PARAM_RUNNER);
     }
 
     LocalParameters(LocalParameters const&);

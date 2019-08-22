@@ -30,7 +30,7 @@ std::vector<struct Command> commands = {
                  {"targetDB", DbType::ACCESS_MODE_INPUT, DbType::NEED_DATA, &DbValidator::taxSequenceDb },
                  {"alnDB",   DbType::ACCESS_MODE_INPUT, DbType::NEED_DATA, &DbValidator::alignmentDb },
                  {"alnDB",   DbType::ACCESS_MODE_OUTPUT, DbType::NEED_DATA, &DbValidator::alignmentDb }}},
-        {"createstats",          createstats,          &localPar.threadsandcompression,         COMMAND_TAXONOMY,
+        {"createstats",          createstats,          &localPar.createstats,         COMMAND_TAXONOMY,
                 "Create taxon statistic",
                 "Create taxon statistic",
                 "Martin Steinegger <martin.steinegger@mpibpc.mpg.de>",

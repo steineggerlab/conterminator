@@ -102,7 +102,7 @@ public:
                                                         char *data, std::vector<std::pair<unsigned int, unsigned int>> & mapping,
                                                         NcbiTaxonomy & t, TaxonomyExpression & taxonomyExpression,
                                                         std::vector<int> &blacklist,
-                                                        size_t * taxaCounter) {
+                                                        size_t * taxaCounter, bool parseDbKey = false) {
         elements.clear();
         const char * entry[255];
         while (*data != '\0') {
@@ -128,6 +128,10 @@ public:
                 taxaCounter[termIndex]++;
                 int startPos = Util::fast_atoi<int>(entry[4]);
                 int endPos   = Util::fast_atoi<int>(entry[5]);
+                if(parseDbKey){
+                    startPos = Util::fast_atoi<int>(entry[7]);
+                    endPos   = Util::fast_atoi<int>(entry[8]);
+                }
                 elements.push_back(TaxonInformation(id, taxon, termIndex, std::min(startPos, endPos), std::max(startPos, endPos), data));
             }else{
                 elements.push_back(TaxonInformation(id, taxon, 0, -1, -1, data));

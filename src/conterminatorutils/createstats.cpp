@@ -96,7 +96,7 @@ int createstats(int argc, const char **argv, const Command& command) {
             }
             // find taxonomical information
             memset(taxaCounter, 0, taxTermCount * sizeof(size_t));
-            TaxonUtils::assignTaxonomy(elements, data, mapping, *t, taxonomyExpression, blackList, taxaCounter);
+            TaxonUtils::assignTaxonomy(elements, data, mapping, *t, taxonomyExpression, blackList, taxaCounter, true);
             // recount
             memset(taxaCounter, 0, taxTermCount * sizeof(size_t));
             for(size_t i = 0; i < elements.size(); i++){
@@ -112,8 +112,8 @@ int createstats(int argc, const char **argv, const Command& command) {
             std::sort(elements.begin(), elements.end(), TaxonUtils::TaxonInformation::compareByTaxAndStart);
             // find max. taxa
             size_t minTaxCnt = std::numeric_limits<size_t>::max();
-            int minTaxTerm = 0;
-            int maxTaxId = 0;
+            int minTaxTerm = -1;
+            int maxTaxId = -1;
             size_t maxTaxCnt = 0;
             for (size_t taxTermId = 0; taxTermId < taxTermCount; taxTermId++) {
                 resultData.append(SSTR(taxaCounter[taxTermId]));
@@ -128,44 +128,76 @@ int createstats(int argc, const char **argv, const Command& command) {
                 }
                 resultData.push_back('\t');
             }
-            if(minTaxTerm == 0 || maxTaxId == 0){
+            if(minTaxTerm == -1 || maxTaxId == -1){
                 continue;
             }
             __sync_fetch_and_add(&(totalContermCounter[minTaxTerm]), 1);
+            struct Contamination{
+                unsigned int key;
+                int taxId;
+                unsigned int start;
+                unsigned int end;
+                bool operator()(const Contamination& first, const Contamination& second) const
+                {
+                    if(first.key < second.key )
+                        return true;
+                    if(second.key < first.key )
+                        return false;
+                    if(first.taxId < second.taxId )
+                        return true;
+                    if(second.taxId < first.taxId )
+                        return false;
+                    return false;
+                }
+            };
+            std::set<Contamination, Contamination> minDbKeys;
 
-            std::set<std::pair<unsigned int, int> > minDbKeys;
-            std::map<int, size_t> maxTaxon;
-            unsigned int maxDbKey=UINT_MAX;
+            struct TaxonCnt{
+                unsigned int key;
+                unsigned int cnt;
+            };
+            std::map<int, TaxonCnt> maxTaxon;
             for(size_t i = 0; i < elements.size(); i++){
                 if(elements[i].termId == minTaxTerm){
-                    std::pair<unsigned int, int> pair = std::make_pair(elements[i].dbKey, elements[i].currTaxa);
-                    minDbKeys.insert(pair);
+                    Contamination conterm;
+                    conterm.key = elements[i].dbKey;
+                    conterm.start = elements[i].start;
+                    conterm.end = elements[i].end;
+                    conterm.taxId = elements[i].currTaxa;
+                    minDbKeys.insert(conterm);
                 }
                 if(elements[i].termId == maxTaxId) {
-                    maxDbKey = std::min(elements[i].dbKey, maxDbKey);
-                    maxTaxon[elements[i].currTaxa]++;
+                    maxTaxon[elements[i].currTaxa].cnt++;
+                    maxTaxon[elements[i].currTaxa].key = elements[i].dbKey;
                 }
             }
-            std::map<int, size_t>::iterator maxTaxonIt;
+            std::map<int, TaxonCnt>::iterator maxTaxonIt;
+            unsigned int maxDbKey=UINT_MAX;
             maxTaxCnt = 0;
             for ( maxTaxonIt = maxTaxon.begin(); maxTaxonIt != maxTaxon.end(); maxTaxonIt++ )
             {
-                if(maxTaxonIt->second >= maxTaxCnt){
+                if(maxTaxonIt->second.cnt >= maxTaxCnt){
                     maxTaxId = maxTaxonIt->first;
-                    maxTaxCnt = maxTaxonIt->second;
+                    maxDbKey =  maxTaxonIt->second.key;
+                    maxTaxCnt = maxTaxonIt->second.cnt;
                 }
             }
 
-            std::set<std::pair<unsigned int, int>>::iterator minDbKeysIt = minDbKeys.begin();
+            std::set<Contamination>::iterator minDbKeysIt = minDbKeys.begin();
             std::string taxons;
             std::string dbLength;
+            std::string contermStartPos;
+            std::string contermEndPos;
+
             unsigned int outDBKey = UINT_MAX;
             for (;minDbKeysIt != minDbKeys.end(); minDbKeysIt++){
-                unsigned int dbKey = minDbKeysIt->first;
+                unsigned int dbKey = minDbKeysIt->key;
                 outDBKey = std::min(dbKey, outDBKey);
-                int taxId = minDbKeysIt->second;
+                int taxId = minDbKeysIt->taxId;
                 resultData.append(Util::parseFastaHeader(header.getDataByDBKey(dbKey, thread_idx)));
                 dbLength.append(SSTR(sequences.getSeqLens(sequences.getId(dbKey))));
+                contermStartPos.append(SSTR(minDbKeysIt->start));
+                contermEndPos.append(SSTR(minDbKeysIt->end));
                 const TaxonNode* node= t->taxonNode(taxId, false);
                 if(node == NULL){
                     taxons.append("Undef");
@@ -174,13 +206,21 @@ int createstats(int argc, const char **argv, const Command& command) {
                 }
                 taxons.push_back(',');
                 dbLength.push_back(',');
+                contermStartPos.push_back(',');
+                contermEndPos.push_back(',');
                 resultData.push_back(',');
             }
             taxons.pop_back();
             dbLength.pop_back();
+            contermStartPos.pop_back();
+            contermEndPos.pop_back();
             resultData.pop_back();
             resultData.push_back('\t');
             resultData.append(taxons);
+            resultData.push_back('\t');
+            resultData.append(contermStartPos);
+            resultData.push_back('\t');
+            resultData.append(contermEndPos);
             resultData.push_back('\t');
             resultData.append(dbLength);
             resultData.push_back('\t');
