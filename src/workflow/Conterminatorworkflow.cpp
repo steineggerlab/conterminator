@@ -43,9 +43,6 @@ void setConterminatorWorkflowDefaults(LocalParameters *p) {
     if ( p->PARAM_K.wasSet == false) {
         p->kmerSize = 15;
     }
-    if (  p->PARAM_MAX_SEQ_LEN.wasSet == false) {
-        p->maxSeqLen = 10000;
-    }
     if( p->PARAM_GAP_OPEN.wasSet == false){
         p->gapOpen = 5;
     }
