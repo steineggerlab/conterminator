@@ -70,6 +70,18 @@ public:
             return false;
         }
 
+        static bool compareByDbKeyAndStart(const TaxonInformation &first, const TaxonInformation &second) {
+            if (first.dbKey < second.dbKey)
+                return true;
+            if (second.dbKey < first.dbKey)
+                return false;
+            if(first.start < second.start )
+                return true;
+            if(second.start < first.start )
+                return false;
+            return false;
+        }
+
         static bool compareByTaxAndStart(const TaxonInformation &first, const TaxonInformation &second) {
             if (first.termId < second.termId)
                 return true;

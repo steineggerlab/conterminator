@@ -105,12 +105,23 @@ if notExists  "$TMP_PATH/contam_region_aln_swap_offset_stats.dbtype"; then
         || fail "createtsv step died"
 fi
 
-if notExists "$2"; then
+if notExists "${2}_stats"; then
     # shellcheck disable=SC2086
-    $RUNNER "$MMSEQS" createtsv "${DB}" "$TMP_PATH/contam_region_aln_swap_offset_stats" "$2" ${THREADS_PAR} \
+    $RUNNER "$MMSEQS" prefixid "$TMP_PATH/contam_region_aln_swap_offset_stats" "${2}_stats" --threads 1 --tsv \
+        || fail "prefixid step 1  died"
+fi
+
+if notExists  "$TMP_PATH/contam_region_aln_swap_offset_all.dbtype"; then
+    # shellcheck disable=SC2086
+    $RUNNER "$MMSEQS" createallreport "${DB}" "$TMP_PATH/contam_region_aln_swap_offset" "$TMP_PATH/contam_region_aln_swap_offset_all" ${CREATESTATS_PAR} \
         || fail "createtsv step died"
 fi
 
+if notExists "${2}_all"; then
+    # shellcheck disable=SC2086
+    $RUNNER "$MMSEQS" prefixid "$TMP_PATH/contam_region_aln_swap_offset_all" "${2}_all" --threads 1 --tsv \
+        || fail "prefixid step 2 died"
+fi
 
 if [ -n "$REMOVE_TMP" ]; then
   echo "Remove temporary files"

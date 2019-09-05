@@ -1,6 +1,6 @@
 set(conterminatorutils_source_files
-    conterminatorutils/distanceton.cpp
     conterminatorutils/extractalignments.cpp
     conterminatorutils/createstats.cpp
+    conterminatorutils/createallreport.cpp
     PARENT_SCOPE
 )
