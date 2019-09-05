@@ -139,15 +139,15 @@ int createallreport(int argc, const char **argv, const Command& command) {
                     resultData.push_back('\t');
                     resultData.append(SSTR(elements[i].end));
                     resultData.push_back('\t');
-                    unsigned int id = sequences.getId(dbkey);
-                    char  * seq = sequences.getData(id, thread_idx);
-                    int leftNPos = -1;
-                    int rightNPos = -1;
-                    findLeftAndRightPos(std::min(elements[i].start, elements[i].end), std::max(elements[i].start, elements[i].end),
-                                        seq, leftNPos, rightNPos);
-                    int length = (rightNPos - leftNPos) + 1;
-                    resultData.append(SSTR(length));
-                    resultData.push_back('\t');
+//                    unsigned int id = sequences.getId(dbkey);
+//                    char  * seq = sequences.getData(id, thread_idx);
+//                    int leftNPos = -1;
+//                    int rightNPos = -1;
+//                    findLeftAndRightPos(std::min(elements[i].start, elements[i].end), std::max(elements[i].start, elements[i].end),
+//                                        seq, leftNPos, rightNPos);
+//                    int length = (rightNPos - leftNPos) + 1;
+//                    resultData.append(SSTR(length));
+//                    resultData.push_back('\t');
                     resultData.append(SSTR(sequences.getSeqLens(sequences.getId(dbkey))-2));
                     resultData.push_back('\t');
                     resultData.append(SSTR(elements[i].termId));
