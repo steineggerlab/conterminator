@@ -89,7 +89,7 @@ int createstats(int argc, const char **argv, const Command& command) {
                 continue;
             }
             char *data = reader.getData(i, thread_idx);
-            size_t length = reader.getSeqLens(i);
+            size_t length = reader.getEntryLen(i);
 
             if (length == 1) {
                 continue;
@@ -195,7 +195,7 @@ int createstats(int argc, const char **argv, const Command& command) {
                 outDBKey = std::min(dbKey, outDBKey);
                 int taxId = minDbKeysIt->taxId;
                 resultData.append(Util::parseFastaHeader(header.getDataByDBKey(dbKey, thread_idx)));
-                dbLength.append(SSTR(sequences.getSeqLens(sequences.getId(dbKey))));
+                dbLength.append(SSTR(sequences.getSeqLen(sequences.getId(dbKey))));
                 contermStartPos.append(SSTR(minDbKeysIt->start));
                 contermEndPos.append(SSTR(minDbKeysIt->end));
                 const TaxonNode* node= t->taxonNode(taxId, false);
@@ -233,7 +233,7 @@ int createstats(int argc, const char **argv, const Command& command) {
                 resultData.append(node->name);
             }
             resultData.push_back('\t');
-            resultData.append(SSTR(sequences.getSeqLens(sequences.getId(maxDbKey))));
+            resultData.append(SSTR(sequences.getSeqLen(sequences.getId(maxDbKey))));
             resultData.push_back('\n');
             writer.writeData(resultData.c_str(), resultData.size(), outDBKey, thread_idx);
         }

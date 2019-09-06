@@ -4,8 +4,7 @@
 #include "Debug.h"
 #include "FileUtil.h"
 #include "LocalParameters.h"
-
-#include "conterminator.sh.h"
+#include "conterminatordna.sh.h"
 
 void setConterminatorWorkflowDefaults(LocalParameters *p) {
     p->alignmentMode = Parameters::ALIGNMENT_MODE_SCORE_COV_SEQID;
@@ -55,7 +54,7 @@ void setConterminatorWorkflowDefaults(LocalParameters *p) {
     p->blacklist = "10239,12908,28384,81077,11632,340016,61964,48479,48510";
 }
 
-int conterminatorworkflow(int argc, const char **argv, const Command &command) {
+int conterminatordna(int argc, const char **argv, const Command &command) {
     LocalParameters &par = LocalParameters::getLocalInstance();
     setConterminatorWorkflowDefaults(&par);
     par.parseParameters(argc, argv, command, true, 0, MMseqsParameter::COMMAND_COMMON);
@@ -71,7 +70,6 @@ int conterminatorworkflow(int argc, const char **argv, const Command &command) {
     par.filenames.pop_back();
     par.filenames.push_back(tmpDir);
 
-
     cmd.addVariable("REMOVE_TMP", par.removeTmpFiles ? "TRUE" : NULL);
     cmd.addVariable("RUNNER", par.runner.c_str());
     cmd.addVariable("EXTRACTALIGNMENTS_PAR", par.createParameterString(par.extractalignments).c_str());
@@ -84,7 +82,6 @@ int conterminatorworkflow(int argc, const char **argv, const Command &command) {
     cmd.addVariable("THREADS_PAR", par.createParameterString(par.onlythreads).c_str());
     cmd.addVariable("EXTRACT_FRAMES_PAR", par.createParameterString(par.extractframes).c_str());
 
-
     par.kmerSize = 24;
     cmd.addVariable("KMERMATCHER_PAR", par.createParameterString(par.kmermatcher).c_str());
     par.kmerSize = 15;
@@ -92,15 +89,9 @@ int conterminatorworkflow(int argc, const char **argv, const Command &command) {
     par.maskMode = 1;
     cmd.addVariable("PREFILTER_PAR", par.createParameterString(par.prefilter).c_str());
 
-//    par.alphabetSize = alphabetSize;
-//    par.kmerSize = kmerSize;
-//
-//    cmd.addVariable("ALIGNMENT_PAR", par.createParameterString(par.align).c_str());
-//    cmd.addVariable("CLUSTER_PAR", par.createParameterString(par.clust).c_str());
 
-
-    FileUtil::writeFile(tmpDir + "/conterminator.sh", conterminator_sh, conterminator_sh_len);
-    std::string program(tmpDir + "/conterminator.sh");
+    FileUtil::writeFile(tmpDir + "/conterminatordna.sh", conterminatordna_sh, conterminatordna_sh_len);
+    std::string program(tmpDir + "/conterminatordna.sh");
     cmd.execProgram(program.c_str(), par.filenames);
 
     return EXIT_SUCCESS;

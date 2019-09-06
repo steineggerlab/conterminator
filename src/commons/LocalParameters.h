@@ -16,11 +16,10 @@ public:
         return static_cast<LocalParameters&>(LocalParameters::getInstance());
     }
 
-    std::vector<MMseqsParameter*> conterminatorworkflow;
-    std::vector<MMseqsParameter*> conterminatorSearch;
+    std::vector<MMseqsParameter*> conterminatordna;
+    std::vector<MMseqsParameter*> conterminatorprotein;
     std::vector<MMseqsParameter*> extractalignments;
     std::vector<MMseqsParameter*> createstats;
-    std::vector<MMseqsParameter*> distanceton;
 private:
     LocalParameters() :
             Parameters(){
@@ -35,15 +34,14 @@ private:
         createstats.push_back(&PARAM_TAXON_LIST);
         createstats.push_back(&PARAM_THREADS);
         createstats.push_back(&PARAM_V);
-        // distanceton
-        distanceton.push_back(&PARAM_EXTRACT_MODE);
-        distanceton.push_back(&PARAM_THREADS);
-        distanceton.push_back(&PARAM_V);
-        // conterminator
-        conterminatorSearch = removeParameter(searchworkflow, PARAM_MAX_SEQS);
-        conterminatorworkflow = combineList(conterminatorworkflow, conterminatorSearch);
-        conterminatorworkflow = combineList(conterminatorworkflow, createstats);
-        conterminatorworkflow = combineList(conterminatorworkflow, extractalignments);
+        // conterminatordna
+        conterminatordna = removeParameter(searchworkflow, PARAM_MAX_SEQS);
+        conterminatordna = combineList(conterminatordna, createstats);
+        conterminatordna = combineList(conterminatordna, extractalignments);
+        // conterminatorprotein
+        conterminatorprotein = removeParameter(linclustworkflow, PARAM_MAX_SEQS);
+        conterminatorprotein = combineList(conterminatordna, createstats);
+        conterminatorprotein = combineList(conterminatordna, extractalignments);
     }
 
     LocalParameters(LocalParameters const&);

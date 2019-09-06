@@ -92,12 +92,15 @@ int createallreport(int argc, const char **argv, const Command& command) {
             elements.clear();
             idDetected.clear();
             unsigned int queryKey = reader.getDbKey(i);
+            if(queryKey == 107673){
+                std::cout << std::endl;
+            }
             unsigned int queryTaxon = TaxonUtils::getTaxon(queryKey, mapping);
             if (queryTaxon == 0 || queryTaxon == UINT_MAX) {
                 continue;
             }
             char *data = reader.getData(i, thread_idx);
-            size_t length = reader.getSeqLens(i);
+            size_t length = reader.getEntryLen(i);
 
             if (length == 1) {
                 continue;
@@ -123,13 +126,14 @@ int createallreport(int argc, const char **argv, const Command& command) {
                 }
                 prevKey = elements[i].dbKey;
             }
-
+            writePos++;
             std::sort(elements.begin(), elements.begin() + writePos,
                       TaxonUtils::TaxonInformation::compareByTaxAndStart);
 
             // recount
             for (size_t i = 0; i < writePos; i++) {
                 const unsigned int dbkey = elements[i].dbKey;
+
                 const bool existsAlready = idDetected.find(dbkey) != idDetected.end();
                 if (existsAlready == false) {
                     idDetected.insert(dbkey);
@@ -148,7 +152,7 @@ int createallreport(int argc, const char **argv, const Command& command) {
 //                    int length = (rightNPos - leftNPos) + 1;
 //                    resultData.append(SSTR(length));
 //                    resultData.push_back('\t');
-                    resultData.append(SSTR(sequences.getSeqLens(sequences.getId(dbkey))-2));
+                    resultData.append(SSTR(sequences.getSeqLen(sequences.getId(dbkey))));
                     resultData.push_back('\t');
                     resultData.append(SSTR(elements[i].termId));
                     resultData.push_back('\t');

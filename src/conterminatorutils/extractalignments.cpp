@@ -107,7 +107,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
             elements.clear();
             memset(taxaCounter, 0, taxTermCount * sizeof(size_t));
             unsigned int queryKey = reader.getDbKey(i);
-            unsigned int queryLen = reader.getSeqLens(i);
+            unsigned int queryLen = reader.getSeqLen(i);
 
             unsigned int queryTaxon = TaxonUtils::getTaxon(queryKey, mapping);
             if(queryTaxon == 0 || queryTaxon == UINT_MAX ){
@@ -127,7 +127,7 @@ int extractalignments(int argc, const char **argv, const Command& command) {
                 continue;
             }
             char *data = reader.getData(i, thread_idx);
-            size_t length = reader.getSeqLens(i);
+            size_t length = reader.getSeqLen(i);
 
             if (length == 1) {
                 continue;

@@ -1,4 +1,5 @@
 set(workflow_source_files
-        workflow/Conterminatorworkflow.cpp
+        workflow/Conterminatordna.cpp
+        workflow/Conterminatorprotein.cpp
         PARENT_SCOPE
         )

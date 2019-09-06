@@ -1,8 +1,8 @@
 include(MMseqsResourceCompiler)
 
 set(COMPILED_RESOURCES
-      conterminator.sh
-        )
+      conterminatordna.sh
+      conterminatorprotein.sh)
 
 set(GENERATED_OUTPUT_HEADERS "")
 FOREACH(INPUT_FILE ${COMPILED_RESOURCES})
