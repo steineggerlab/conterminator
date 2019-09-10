@@ -92,13 +92,7 @@ int createallreport(int argc, const char **argv, const Command& command) {
             elements.clear();
             idDetected.clear();
             unsigned int queryKey = reader.getDbKey(i);
-            if(queryKey == 107673){
-                std::cout << std::endl;
-            }
-            unsigned int queryTaxon = TaxonUtils::getTaxon(queryKey, mapping);
-            if (queryTaxon == 0 || queryTaxon == UINT_MAX) {
-                continue;
-            }
+
             char *data = reader.getData(i, thread_idx);
             size_t length = reader.getEntryLen(i);
 

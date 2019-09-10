@@ -61,7 +61,6 @@ fi
 
 cp "$TMP_PATH/contam_region.index" "$TMP_PATH/contam_region.old.index"
 awk '{print NR"\t"$2"\t"$3}' "$TMP_PATH/contam_region.index" > "$TMP_PATH/contam_region.new.index"
-awk '{print NR"\t"$1}'  "$TMP_PATH/contam_region.index"  > "$TMP_PATH/contam_region.mapping"
 mv "$TMP_PATH/contam_region.new.index" "$TMP_PATH/contam_region.index"
 
 if notExists "$TMP_PATH/contam_region_rev.dbtype"; then
@@ -94,10 +93,6 @@ if notExists "$TMP_PATH/contam_region_aln_swap_offset.dbtype"; then
     "$MMSEQS" offsetalignment "$TMP_PATH/contam_region" "$TMP_PATH/contam_region_rev" "${DB}" "$TMP_PATH/db_rev_split"  "$TMP_PATH/contam_region_aln_swap" "$TMP_PATH/contam_region_aln_swap_offset" ${THREADS_PAR} \
         || fail "rescorediagonal step died"
 fi
-
-awk 'FNR==NR{f[$1]=$2; next} $1 in f {print f[$1]"\t"$2"\t"$3}' "$TMP_PATH/contam_region.mapping" \
-    "$TMP_PATH/contam_region_aln_swap_offset.index" > "$TMP_PATH/contam_region_aln_swap_offset.new.index"
-mv "$TMP_PATH/contam_region_aln_swap_offset.new.index" "$TMP_PATH/contam_region_aln_swap_offset.index"
 
 if notExists  "$TMP_PATH/contam_region_aln_swap_offset_stats.dbtype"; then
     # shellcheck disable=SC2086

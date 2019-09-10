@@ -83,11 +83,6 @@ int createstats(int argc, const char **argv, const Command& command) {
             elements.clear();
             idDetected.clear();
             unsigned int queryKey = reader.getDbKey(i);
-
-            unsigned int queryTaxon = TaxonUtils::getTaxon(queryKey, mapping);
-            if (queryTaxon == 0 || queryTaxon == UINT_MAX) {
-                continue;
-            }
             char *data = reader.getData(i, thread_idx);
             size_t length = reader.getEntryLen(i);
 
@@ -235,7 +230,7 @@ int createstats(int argc, const char **argv, const Command& command) {
             resultData.push_back('\t');
             resultData.append(SSTR(sequences.getSeqLen(sequences.getId(maxDbKey))));
             resultData.push_back('\n');
-            writer.writeData(resultData.c_str(), resultData.size(), outDBKey, thread_idx);
+            writer.writeData(resultData.c_str(), resultData.size(), queryKey, thread_idx);
         }
     }
     Debug(Debug::INFO) << "\nDetected potentail conterminetaion in the following Taxons: \n" ;
