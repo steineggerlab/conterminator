@@ -72,13 +72,15 @@ int createallreport(int argc, const char **argv, const Command& command) {
     Debug(Debug::INFO) <<"Build N index!\n";
     for(size_t i = 0; i < sequences.getSize(); i++){
         progressIndex.updateProgress();
+	
         char * seq = sequences.getData(i, 0);
         size_t start = vectorN.size();
         bool isNState = false;
-        for(size_t i = 0; i < sequences.getSeqLen(i); i++){
-            if((seq[i] == 'N' || seq[i] == 'n') && isNState == false){
+	size_t seqLen = sequences.getSeqLen(i);
+        for(size_t j = 0; j < seqLen; j++){
+            if((seq[j] == 'N' || seq[j] == 'n') && isNState == false){
                 isNState = true;
-                vectorN.push_back(i);
+                vectorN.push_back(j);
             }else{
                 isNState = false;
             }
