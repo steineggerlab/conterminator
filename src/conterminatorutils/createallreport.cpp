@@ -68,10 +68,10 @@ int createallreport(int argc, const char **argv, const Command& command) {
     std::vector<int> vectorN;
     vectorN.reserve(sequences.getSize()*2);
     std::unordered_map<unsigned int, std::pair<size_t, size_t> > mapNOffset;
-    Debug::Progress progress(sequences.getSize());
+    Debug::Progress progressIndex(sequences.getSize());
     Debug(Debug::INFO) <<"Build N index!\n";
     for(size_t i = 0; i < sequences.getSize(); i++){
-        progress.updateProgress();
+        progressIndex.updateProgress();
         char * seq = sequences.getData(i, 0);
         size_t start = vectorN.size();
         bool isNState = false;
