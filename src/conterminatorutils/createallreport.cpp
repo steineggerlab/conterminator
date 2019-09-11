@@ -14,18 +14,25 @@
 #endif
 
 
-void findLeftAndRightPos(int startPos, int endPos, char *seq, int &leftNPos, int &rightNPos) {
-    for(int pos = startPos; pos > -1; pos--){
-        leftNPos = pos;
-        if(seq[pos] == 'N'){
-            break;
-        }
+void findLeftAndRightPos(int startPos, int endPos, std::pair<size_t, size_t> startEnd, std::vector<int> &vectorN, int &leftNPos, int &rightNPos) {
+    size_t elmCnt = startEnd.second- startEnd.first;
+    if(elmCnt == 0){
+        return;
     }
-    for(int pos = endPos; seq[pos] != '\n'; pos++) {
-        rightNPos = pos;
-        if(seq[pos] == 'N'){
-            break;
+    std::vector<int>::iterator arrayStartPos = vectorN.begin() + startEnd.first;
+    std::vector<int>::iterator arrayEndPos = vectorN.begin() + (startEnd.first + elmCnt);
+
+    std::vector<int>::iterator startPosIt = std::lower_bound(arrayStartPos, arrayEndPos, startPos) ;
+    if(startPosIt != arrayEndPos){
+        if(*startPosIt > startPos && (startPosIt - 1) >= arrayStartPos){
+            --startPosIt;
         }
+        leftNPos = *startPosIt;
+    }
+
+    std::vector<int>::iterator endPosIt = std::lower_bound(arrayStartPos, arrayEndPos, endPos);
+    if(endPosIt != arrayEndPos){
+        rightNPos = *endPosIt;
     }
 }
 
@@ -56,8 +63,29 @@ int createallreport(int argc, const char **argv, const Command& command) {
     header.readMmapedDataInMemory();
 
     DBReader<unsigned int> sequences(par.db1.c_str(), par.db1Index.c_str(), par.threads, DBReader<unsigned int>::USE_INDEX|DBReader<unsigned int>::USE_DATA);
-    sequences.open(DBReader<unsigned int>::NOSORT);
-
+    sequences.open(DBReader<unsigned int>::LINEAR_ACCCESS);
+    // build index of Ns
+    std::vector<int> vectorN;
+    vectorN.reserve(sequences.getSize()*2);
+    std::unordered_map<unsigned int, std::pair<size_t, size_t> > mapNOffset;
+    Debug::Progress progress(sequences.getSize());
+    Debug(Debug::INFO) <<"Build N index!\n";
+    for(size_t i = 0; i < sequences.getSize(); i++){
+        progress.updateProgress();
+        char * seq = sequences.getData(i, 0);
+        size_t start = vectorN.size();
+        bool isNState = false;
+        for(size_t i = 0; i < sequences.getSeqLen(i); i++){
+            if((seq[i] == 'N' || seq[i] == 'n') && isNState == false){
+                isNState = true;
+                vectorN.push_back(i);
+            }else{
+                isNState = false;
+            }
+        }
+        size_t end = vectorN.size();
+        mapNOffset[sequences.getDbKey(i)] = std::make_pair(start, end);
+    }
     DBReader<unsigned int> reader(par.db2.c_str(), par.db2Index.c_str(), par.threads,
                                   DBReader<unsigned int>::USE_DATA | DBReader<unsigned int>::USE_INDEX);
     reader.open(DBReader<unsigned int>::LINEAR_ACCCESS);
@@ -137,16 +165,15 @@ int createallreport(int argc, const char **argv, const Command& command) {
                     resultData.push_back('\t');
                     resultData.append(SSTR(elements[i].end));
                     resultData.push_back('\t');
-//                    unsigned int id = sequences.getId(dbkey);
-//                    char  * seq = sequences.getData(id, thread_idx);
-//                    int leftNPos = -1;
-//                    int rightNPos = -1;
-//                    findLeftAndRightPos(std::min(elements[i].start, elements[i].end), std::max(elements[i].start, elements[i].end),
-//                                        seq, leftNPos, rightNPos);
-//                    int length = (rightNPos - leftNPos) + 1;
-//                    resultData.append(SSTR(length));
-//                    resultData.push_back('\t');
-                    resultData.append(SSTR(sequences.getSeqLen(sequences.getId(dbkey))));
+                    size_t dbSeqLen = sequences.getSeqLen(sequences.getId(dbkey));
+                    int leftNPos = -1;
+                    int rightNPos = -1;
+                    findLeftAndRightPos(std::min(elements[i].start, elements[i].end), std::max(elements[i].start, elements[i].end),
+                                        mapNOffset[dbkey], vectorN, leftNPos, rightNPos);
+                    int length = (rightNPos == -1 ? dbSeqLen : rightNPos) - (leftNPos == -1 ? 0 : leftNPos );
+                    resultData.append(SSTR(length));
+                    resultData.push_back('\t');
+                    resultData.append(SSTR(dbSeqLen));
                     resultData.push_back('\t');
                     resultData.append(SSTR(elements[i].termId));
                     resultData.push_back('\t');
