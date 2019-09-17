@@ -78,7 +78,7 @@ int conterminatordna(int argc, const char **argv, const Command &command) {
     par.compressed = 1;
     cmd.addVariable("SPLITSEQ_PAR", par.createParameterString(par.splitsequence).c_str());
     par.compressed = prevCompressed;
-    cmd.addVariable("RESCORE_DIAGONAL_PAR", par.createParameterString(par.rescorediagonal).c_str());
+    cmd.addVariable("RESCORE_DIAGONAL1_PAR", par.createParameterString(par.rescorediagonal).c_str());
     cmd.addVariable("THREADS_PAR", par.createParameterString(par.onlythreads).c_str());
     cmd.addVariable("EXTRACT_FRAMES_PAR", par.createParameterString(par.extractframes).c_str());
 
@@ -88,7 +88,10 @@ int conterminatordna(int argc, const char **argv, const Command &command) {
     par.maxSeqLen = 1000000;
     par.maskMode = 1;
     cmd.addVariable("PREFILTER_PAR", par.createParameterString(par.prefilter).c_str());
-
+    float tmpSeqIdThr = par.seqIdThr;
+    par.seqIdThr = sqrt(par.seqIdThr);
+    cmd.addVariable("RESCORE_DIAGONAL2_PAR", par.createParameterString(par.rescorediagonal).c_str());
+    par.seqIdThr = tmpSeqIdThr;
 
     FileUtil::writeFile(tmpDir + "/conterminatordna.sh", conterminatordna_sh, conterminatordna_sh_len);
     std::string program(tmpDir + "/conterminatordna.sh");

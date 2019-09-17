@@ -15,7 +15,7 @@
 
 
 void findLeftAndRightPos(int startPos, int endPos, std::pair<size_t, size_t> startEnd, std::vector<int> &vectorN, int &leftNPos, int &rightNPos) {
-    size_t elmCnt = startEnd.second- startEnd.first;
+    size_t elmCnt = startEnd.second - startEnd.first;
     if(elmCnt == 0){
         return;
     }
@@ -24,10 +24,14 @@ void findLeftAndRightPos(int startPos, int endPos, std::pair<size_t, size_t> sta
 
     std::vector<int>::iterator startPosIt = std::lower_bound(arrayStartPos, arrayEndPos, startPos) ;
     if(startPosIt != arrayEndPos){
-        if(*startPosIt > startPos && (startPosIt - 1) >= arrayStartPos){
-            --startPosIt;
+        if(*startPosIt > startPos){
+            if((startPosIt - 1) >= arrayStartPos){
+                --startPosIt;
+                leftNPos = *startPosIt;
+            }
+        }else {
+            leftNPos = *startPosIt;
         }
-        leftNPos = *startPosIt;
     }
 
     std::vector<int>::iterator endPosIt = std::lower_bound(arrayStartPos, arrayEndPos, endPos);
@@ -72,11 +76,11 @@ int createallreport(int argc, const char **argv, const Command& command) {
     Debug(Debug::INFO) <<"Build N index!\n";
     for(size_t i = 0; i < sequences.getSize(); i++){
         progressIndex.updateProgress();
-	
+
         char * seq = sequences.getData(i, 0);
         size_t start = vectorN.size();
         bool isNState = false;
-	size_t seqLen = sequences.getSeqLen(i);
+        size_t seqLen = sequences.getSeqLen(i);
         for(size_t j = 0; j < seqLen; j++){
             if((seq[j] == 'N' || seq[j] == 'n') && isNState == false){
                 isNState = true;
@@ -124,9 +128,9 @@ int createallreport(int argc, const char **argv, const Command& command) {
             unsigned int queryKey = reader.getDbKey(i);
 
             char *data = reader.getData(i, thread_idx);
-            size_t length = reader.getEntryLen(i);
+            size_t entryLength = reader.getEntryLen(i);
 
-            if (length == 1) {
+            if (entryLength == 1) {
                 continue;
             }
             // find taxonomical information
@@ -155,31 +159,31 @@ int createallreport(int argc, const char **argv, const Command& command) {
                       TaxonUtils::TaxonInformation::compareByTaxAndStart);
 
             // recount
-            for (size_t i = 0; i < writePos; i++) {
-                const unsigned int dbkey = elements[i].dbKey;
+            for (size_t j = 0; j < writePos; j++) {
+                const unsigned int dbkey = elements[j].dbKey;
 
                 const bool existsAlready = idDetected.find(dbkey) != idDetected.end();
                 if (existsAlready == false) {
                     idDetected.insert(dbkey);
                     resultData.append(Util::parseFastaHeader(header.getDataByDBKey(dbkey, thread_idx)));
                     resultData.push_back('\t');
-                    resultData.append(SSTR(elements[i].start));
+                    resultData.append(SSTR(elements[j].start));
                     resultData.push_back('\t');
-                    resultData.append(SSTR(elements[i].end));
+                    resultData.append(SSTR(elements[j].end));
                     resultData.push_back('\t');
                     size_t dbSeqLen = sequences.getSeqLen(sequences.getId(dbkey));
                     int leftNPos = -1;
                     int rightNPos = -1;
-                    findLeftAndRightPos(std::min(elements[i].start, elements[i].end), std::max(elements[i].start, elements[i].end),
+                    findLeftAndRightPos(std::min(elements[j].start, elements[j].end), std::max(elements[j].start, elements[j].end),
                                         mapNOffset[dbkey], vectorN, leftNPos, rightNPos);
                     int length = (rightNPos == -1 ? dbSeqLen : rightNPos) - (leftNPos == -1 ? 0 : leftNPos );
                     resultData.append(SSTR(length));
                     resultData.push_back('\t');
                     resultData.append(SSTR(dbSeqLen));
                     resultData.push_back('\t');
-                    resultData.append(SSTR(elements[i].termId));
+                    resultData.append(SSTR(elements[j].termId));
                     resultData.push_back('\t');
-                    const TaxonNode *node = t->taxonNode(elements[i].currTaxa, false);
+                    const TaxonNode *node = t->taxonNode(elements[j].currTaxa, false);
                     if (node == NULL) {
                         resultData.append("Undef");
                     } else {

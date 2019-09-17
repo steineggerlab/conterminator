@@ -37,7 +37,7 @@ fi
 
 if notExists "$TMP_PATH/aln.dbtype"; then
     # shellcheck disable=SC2086
-    $RUNNER "$MMSEQS" rescorediagonal "$TMP_PATH/db_rev_split" "$TMP_PATH/db_rev_split" "$TMP_PATH/pref" "$TMP_PATH/aln" ${RESCORE_DIAGONAL_PAR} \
+    $RUNNER "$MMSEQS" rescorediagonal "$TMP_PATH/db_rev_split" "$TMP_PATH/db_rev_split" "$TMP_PATH/pref" "$TMP_PATH/aln" ${RESCORE_DIAGONAL1_PAR} \
         || fail "rescorediagonal step died"
 fi
 
@@ -78,7 +78,7 @@ fi
 
 if notExists "$TMP_PATH/contam_region_aln.dbtype"; then
     # shellcheck disable=SC2086
-    $RUNNER "$MMSEQS" rescorediagonal "$TMP_PATH/db_rev_split" "$TMP_PATH/contam_region_rev" "$TMP_PATH/contam_region_pref" "$TMP_PATH/contam_region_aln" ${RESCORE_DIAGONAL_PAR} \
+    $RUNNER "$MMSEQS" rescorediagonal "$TMP_PATH/db_rev_split" "$TMP_PATH/contam_region_rev" "$TMP_PATH/contam_region_pref" "$TMP_PATH/contam_region_aln" ${RESCORE_DIAGONAL2_PAR} \
         || fail "rescorediagonal2 step died"
 fi
 
