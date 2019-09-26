@@ -26,8 +26,6 @@ int predictcontamination(int argc, const char **argv, const Command& command) {
     DBWriter writer(par.db2.c_str(), par.db2Index.c_str(), par.threads, par.compressed, reader.getDbtype());
     writer.open();
 
-//    int lenThreshold = par.maxSeqLen;
-
     int lenThreshold = 20000;
 
     Debug::Progress progress(reader.getSize());
@@ -65,7 +63,7 @@ int predictcontamination(int argc, const char **argv, const Command& command) {
                     continue;
                 }
                 size_t len = entry[1] - entry[0];
-                std::string fastaId(entry[0], len-1);
+                const std::string fastaId(entry[0], len-1);
                 int startPos = Util::fast_atoi<int>(entry[1]);
                 int endPos = Util::fast_atoi<int>(entry[2]);
                 int nLen = Util::fast_atoi<int>(entry[3]);
@@ -80,7 +78,6 @@ int predictcontamination(int argc, const char **argv, const Command& command) {
                     char * nextLine = Util::skipLine(firstData);
                     std::string speciesName(entry[6], (nextLine - entry[6] - 1) );
                     longestSpeciesName[termId] = speciesName;
-
                 }
                 const bool existsAlready = idDetected.find(fastaId) != idDetected.end();
                 if (existsAlready == false) {
@@ -91,14 +88,17 @@ int predictcontamination(int argc, const char **argv, const Command& command) {
                 firstData = Util::skipLine(firstData);
             }
 
-            // predict direction of conterm.
+            // predict direction of contamination based on entry length
             int contermCnt = 0;
             int notContermCnt = 0;
             int notContermId = -1;
-            for (int i = 0; i <= maxTermId; i++) {
-                contermCnt += (termLen[i] != 0 && termLen[i] <= lenThreshold) ? termCount[i] : 0;
-                notContermCnt += (termLen[i] > lenThreshold) ? termCount[i] : 0;;
-                notContermId = (termLen[i] > lenThreshold) ? i : notContermId;
+            for (int term = 0; term <= maxTermId; term++) {
+                if(termLen[term] > lenThreshold){
+                    notContermCnt += termCount[term];
+                    notContermId = term;
+                } else (termLen[term] != 0 && termLen[term] <= lenThreshold){
+                    contermCnt += termCount[term];
+                }
             }
             if (notContermCnt == 1 && contermCnt >= 1) {
                 char *secondData = data;
