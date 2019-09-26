@@ -96,7 +96,7 @@ int predictcontamination(int argc, const char **argv, const Command& command) {
                 if(termLen[term] > lenThreshold){
                     notContermCnt += termCount[term];
                     notContermId = term;
-                } else (termLen[term] != 0 && termLen[term] <= lenThreshold){
+                } else if (termLen[term] != 0 && termLen[term] <= lenThreshold){
                     contermCnt += termCount[term];
                 }
             }
