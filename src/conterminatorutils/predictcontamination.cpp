@@ -94,10 +94,10 @@ int predictcontamination(int argc, const char **argv, const Command& command) {
             int notContermId = -1;
             for (int term = 0; term <= maxTermId; term++) {
                 if(termLen[term] > lenThreshold){
-                    notContermCnt += termCount[term];
+                    notContermCnt++;
                     notContermId = term;
                 } else if (termLen[term] != 0 && termLen[term] <= lenThreshold){
-                    contermCnt += termCount[term];
+                    contermCnt++;
                 }
             }
             if (notContermCnt == 1 && contermCnt >= 1) {
