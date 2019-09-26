@@ -51,6 +51,7 @@ int predictcontamination(int argc, const char **argv, const Command& command) {
             memset(termCount, 0, sizeof(int) * 256);
             longestId.clear();
             longestSpeciesName.clear();
+            idDetected.clear();
             resultData.clear();
             unsigned int queryKey = reader.getDbKey(i);
             char *data = reader.getData(i, thread_idx);
