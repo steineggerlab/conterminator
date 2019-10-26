@@ -48,6 +48,8 @@ void setConterminatorWorkflowDefaults(LocalParameters *p) {
     if( p->PARAM_GAP_EXTEND.wasSet  == false){
         p->gapExtend = 2;
     }
+    p->diagonalScoring = 0;
+    p->compBiasCorrection = 0;
     // (Bacteria, Archaea), Fungi, Animalia, Plantae, Rest of Eukaryota
     p->taxonList = "(2|2157),4751,33208,33090,(2759&!4751&!33208&!33090)";
     // virus, unclassified sequences, other sequences,  artifical sequences, retro virus, environmental samples
@@ -87,6 +89,7 @@ int conterminatordna(int argc, const char **argv, const Command &command) {
     par.kmerSize = 15;
     par.maxSeqLen = 1000000;
     par.maskMode = 1;
+    par.maxRejected = 5;
     cmd.addVariable("PREFILTER_PAR", par.createParameterString(par.prefilter).c_str());
     float tmpSeqIdThr = par.seqIdThr;
     par.seqIdThr = sqrt(par.seqIdThr);
