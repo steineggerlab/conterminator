@@ -28,7 +28,7 @@ Conterminator requires a FASTA input and `mappingFile` file, which maps FASTA id
     
 Protein sequences can be processed as following:        
 
-    conterminator protein example/prot.fasta example/prots.mapping result tmp  
+    conterminator protein example/prots.fasta example/prots.mapping result tmp  
 
 ## Important Parameters
 ### `--taxon-list`
