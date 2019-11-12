@@ -12,26 +12,37 @@ notExists() {
 #pre processing
 [ -z "$MMSEQS" ] && echo "Please set the environment variable \$MMSEQS to your MMSEQS binary." && exit 1;
 # check amount of input variables
-[ "$#" -ne 3 ] && echo "Please provide <sequenceDB> <outDB> <tmp>" && exit 1;
+[ "$#" -ne 4 ] && echo "Please provide <sequence.fasta> <mappingFile> <result> <tmp>" && exit 1;
 # check if files exists
 [ ! -f "$1" ] &&  echo "$1 not found!" && exit 1;
-[   -f "$2" ] &&  echo "$2 exists already!" && exit 1;
-[ ! -d "$3" ] &&  echo "tmp directory $3 not found!" && mkdir -p "$3";
+[ ! -f "$2" ] &&  echo "$2 not found!" && exit 1;
+[   -f "$3" ] &&  echo "$3 exists already!" && exit 1;
+[ ! -d "$4" ] &&  echo "tmp directory $4 not found!" && mkdir -p "$4";
 
 
-DB="$1"
-TMP_PATH="$3"
+TMP_PATH="$4"
 
+if notExists "$TMP_PATH/sequencedb"; then
+    # shellcheck disable=SC2086
+    "$MMSEQS" createdb "$1" "$TMP_PATH/sequencedb" ${CREATEDB} \
+        || fail "createdb step died"
+fi
+
+if notExists "$TMP_PATH/sequencedb_mapping"; then
+    # shellcheck disable=SC2086
+    "$MMSEQS" createtaxdb "$TMP_PATH/sequencedb" "${TMP_PATH}/createtaxdb" --tax-mapping-file "${TAXMAPPINGFILE}" ${ONLYVERBOSITY} \
+        || fail "createtaxdb step died"
+fi
 
 if notExists "$TMP_PATH/db_rev_split"; then
     # shellcheck disable=SC2086
-    "$MMSEQS" splitsequence "$DB" "$TMP_PATH/db_rev_split"  ${SPLITSEQ_PAR} \
+    "$MMSEQS" splitsequence "$TMP_PATH/sequencedb" "$TMP_PATH/db_rev_split"  ${SPLITSEQ_PAR} \
         || fail "splitsequence step died"
 fi
 
 if notExists "$TMP_PATH/pref"; then
     # shellcheck disable=SC2086
-    $RUNNER "$MMSEQS" kmermatcher "$TMP_PATH/db_rev_split"  "$TMP_PATH/pref"  ${KMERMATCHER_PAR} \
+    $RUNNER "$MMSEQS" kmermatcher "$TMP_PATH/db_rev_split" "$TMP_PATH/pref"  ${KMERMATCHER_PAR} \
         || fail "kmermatcher step died"
 fi
 
@@ -43,19 +54,19 @@ fi
 
 if notExists "$TMP_PATH/aln_offset.dbtype"; then
     # shellcheck disable=SC2086
-    "$MMSEQS" offsetalignment "${DB}" "$TMP_PATH/db_rev_split" "${DB}" "$TMP_PATH/db_rev_split"  "$TMP_PATH/aln" "$TMP_PATH/aln_offset" ${OFFSETALIGNMENT_PAR} \
+    "$MMSEQS" offsetalignment "$TMP_PATH/sequencedb" "$TMP_PATH/db_rev_split" "$TMP_PATH/sequencedb" "$TMP_PATH/db_rev_split"  "$TMP_PATH/aln" "$TMP_PATH/aln_offset" ${OFFSETALIGNMENT_PAR} \
         || fail "rescorediagonal step died"
 fi
 
 if notExists "$TMP_PATH/contam_aln.dbtype"; then
     # shellcheck disable=SC2086
-    $RUNNER "$MMSEQS" extractalignments "${DB}"  "$TMP_PATH/aln_offset" "$TMP_PATH/contam_aln" ${EXTRACTALIGNMENTS_PAR} \
+    $RUNNER "$MMSEQS" extractalignments "$TMP_PATH/sequencedb" "$TMP_PATH/aln_offset" "$TMP_PATH/contam_aln" ${EXTRACTALIGNMENTS_PAR} \
         || fail "extractalignment step died"
 fi
 
 if notExists "$TMP_PATH/contam_region.dbtype"; then
     # shellcheck disable=SC2086
-    $RUNNER "$MMSEQS" extractalignedregion "${DB}" "${DB}" "$TMP_PATH/contam_aln" "$TMP_PATH/contam_region" ${THREADS_PAR} \
+    $RUNNER "$MMSEQS" extractalignedregion "$TMP_PATH/sequencedb" "$TMP_PATH/sequencedb" "$TMP_PATH/contam_aln" "$TMP_PATH/contam_region" ${THREADS_PAR} \
         || fail "extractalignedregion step died"
 fi
 
@@ -90,19 +101,19 @@ fi
 
 if notExists "$TMP_PATH/contam_region_aln_swap_offset.dbtype"; then
     # shellcheck disable=SC2086
-    "$MMSEQS" offsetalignment "$TMP_PATH/contam_region" "$TMP_PATH/contam_region_rev" "${DB}" "$TMP_PATH/db_rev_split"  "$TMP_PATH/contam_region_aln_swap" "$TMP_PATH/contam_region_aln_swap_offset" ${THREADS_PAR} \
+    "$MMSEQS" offsetalignment "$TMP_PATH/contam_region" "$TMP_PATH/contam_region_rev" "$TMP_PATH/sequencedb" "$TMP_PATH/db_rev_split"  "$TMP_PATH/contam_region_aln_swap" "$TMP_PATH/contam_region_aln_swap_offset" ${THREADS_PAR} \
         || fail "rescorediagonal step died"
 fi
 
 if notExists  "$TMP_PATH/contam_region_aln_swap_offset_all.dbtype"; then
     # shellcheck disable=SC2086
-    $RUNNER "$MMSEQS" createallreport "${DB}" "$TMP_PATH/contam_region_aln_swap_offset" "$TMP_PATH/contam_region_aln_swap_offset_all" ${CREATESTATS_PAR} \
+    $RUNNER "$MMSEQS" createallreport "$TMP_PATH/sequencedb" "$TMP_PATH/contam_region_aln_swap_offset" "$TMP_PATH/contam_region_aln_swap_offset_all" ${CREATESTATS_PAR} \
         || fail "createtsv step died"
 fi
 
-if notExists "${2}_all"; then
+if notExists "${3}_all"; then
     # shellcheck disable=SC2086
-    $RUNNER "$MMSEQS" prefixid "$TMP_PATH/contam_region_aln_swap_offset_all" "${2}_all" --threads 1 --tsv \
+    $RUNNER "$MMSEQS" prefixid "$TMP_PATH/contam_region_aln_swap_offset_all" "${3}_all" --threads 1 --tsv \
         || fail "prefixid step 2 died"
 fi
 
@@ -112,14 +123,28 @@ if notExists  "$TMP_PATH/contam_region_aln_swap_offset_predconterm.dbtype"; then
         || fail "createtsv step died"
 fi
 
-if notExists "${2}_stats"; then
+if notExists "${3}_stats"; then
     # shellcheck disable=SC2086
-    $RUNNER "$MMSEQS" prefixid "$TMP_PATH/contam_region_aln_swap_offset_predconterm" "${2}_conterm_prediction" --threads 1 --tsv \
+    $RUNNER "$MMSEQS" prefixid "$TMP_PATH/contam_region_aln_swap_offset_predconterm" "${3}_conterm_prediction" --threads 1 --tsv \
         || fail "prefixid step 1  died"
 fi
 
 if [ -n "$REMOVE_TMP" ]; then
   echo "Remove temporary files"
-  rm -f "$3/aln_distance"    "$4/aln_distance.index"
+  $MMSEQS rmdb "$TMP_PATH/contam_region_aln_swap_offset_predconterm"
+  $MMSEQS rmdb "$TMP_PATH/contam_region_aln_swap_offset_all"
+  $MMSEQS rmdb "$TMP_PATH/contam_region_aln_swap_offset"
+  $MMSEQS rmdb "$TMP_PATH/contam_region_aln_swap"
+  $MMSEQS rmdb "$TMP_PATH/contam_region_pref"
+  $MMSEQS rmdb "$TMP_PATH/contam_region_aln"
+  $MMSEQS rmdb "$TMP_PATH/contam_region_rev"
+  $MMSEQS rmdb "$TMP_PATH/contam_region"
+  $MMSEQS rmdb "$TMP_PATH/db_rev_split"
+  $MMSEQS rmdb "$TMP_PATH/contam_aln"
+  $MMSEQS rmdb "$TMP_PATH/aln_offset"
+  $MMSEQS rmdb "$TMP_PATH/sequencedb"
+  $MMSEQS rmdb "$TMP_PATH/sequencedb_h"
+  $MMSEQS rmdb "$TMP_PATH/pref"
+  $MMSEQS rmdb "$TMP_PATH/aln"
 fi
 

@@ -36,10 +36,14 @@ private:
         createstats.push_back(&PARAM_V);
         // conterminatordna
         conterminatordna = removeParameter(searchworkflow, PARAM_MAX_SEQS);
+        conterminatordna = combineList(conterminatordna, createdb);
+        conterminatordna = combineList(conterminatordna, createtaxdb);
         conterminatordna = combineList(conterminatordna, createstats);
         conterminatordna = combineList(conterminatordna, extractalignments);
         // conterminatorprotein
         conterminatorprotein = removeParameter(linclustworkflow, PARAM_MAX_SEQS);
+        conterminatorprotein = combineList(conterminatordna, createdb);
+        conterminatorprotein = combineList(conterminatordna, createtaxdb);
         conterminatorprotein = combineList(conterminatordna, createstats);
         conterminatorprotein = combineList(conterminatordna, extractalignments);
     }

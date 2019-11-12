@@ -22,6 +22,7 @@ void setConterminatorWorkflowDefaults(LocalParameters *p) {
     p->forwardFrames= "1";
     p->reverseFrames= "1";
     p->maxSeqLen = 1000;
+    p->removeTmpFiles = true;
     p->covThr = 0.0;
     p->sequenceOverlap = 0;
     p->kmersPerSequence = 100;
@@ -59,10 +60,21 @@ void setConterminatorWorkflowDefaults(LocalParameters *p) {
 int conterminatordna(int argc, const char **argv, const Command &command) {
     LocalParameters &par = LocalParameters::getLocalInstance();
     setConterminatorWorkflowDefaults(&par);
+    for(size_t i = 0; i < par.conterminatordna.size(); i++){
+        par.conterminatordna[i]->category |= MMseqsParameter::COMMAND_EXPERT;
+    }
+    par.PARAM_TAXON_LIST.category = MMseqsParameter::COMMAND_MISC;
+    par.PARAM_BLACKLIST.category = MMseqsParameter::COMMAND_MISC;
+    par.PARAM_MIN_SEQ_ID.category = MMseqsParameter::COMMAND_ALIGN;
+    par.PARAM_MIN_ALN_LEN.category = MMseqsParameter::COMMAND_ALIGN;
+    par.PARAM_THREADS.category = MMseqsParameter::COMMAND_COMMON;
+    par.PARAM_V.category = MMseqsParameter::COMMAND_COMMON;
+    par.PARAM_SPLIT_MEMORY_LIMIT.category = MMseqsParameter::COMMAND_COMMON;
+
     par.parseParameters(argc, argv, command, true, 0, MMseqsParameter::COMMAND_COMMON);
 
     CommandCaller cmd;
-    std::string tmpDir = par.db3;
+    std::string tmpDir = par.db4;
     std::string hash = SSTR(par.hashParameter(par.filenames, par.linclustworkflow));
     if (par.reuseLatest) {
         hash = FileUtil::getHashFromSymLink(tmpDir + "/latest");
@@ -71,7 +83,9 @@ int conterminatordna(int argc, const char **argv, const Command &command) {
 
     par.filenames.pop_back();
     par.filenames.push_back(tmpDir);
-
+    cmd.addVariable("CREATEDB_PAR", par.createParameterString(par.createdb).c_str());
+    cmd.addVariable("TAXMAPPINGFILE", par.db2.c_str());
+    cmd.addVariable("ONLYVERBOSITY",  par.createParameterString(par.onlyverbosity).c_str());
     cmd.addVariable("REMOVE_TMP", par.removeTmpFiles ? "TRUE" : NULL);
     cmd.addVariable("RUNNER", par.runner.c_str());
     cmd.addVariable("EXTRACTALIGNMENTS_PAR", par.createParameterString(par.extractalignments).c_str());

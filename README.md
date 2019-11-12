@@ -22,13 +22,13 @@ Conterminator computes ungapped local alignments of all sequence and reports con
 
 To process nucleotide sequences use the following command:
     
-    conterminator dna sequence.fasta result tmp --tax-mapping-file mappingFile
+    conterminator dna sequence.fasta mappingFile result tmp 
 
-Conterminator requires a `--tax-mapping-file` file, which maps FASTA identfiers to NCBI taxon identfiers.
+Conterminator requires a `mappingFile` file, which maps FASTA identfiers to NCBI taxon identfiers.
     
 Protein sequences can be processed as following:        
 
-    conterminator protein sequence.fasta result tmp --tax-mapping-file mappingFile 
+    conterminator protein sequence.fasta mappingFile result tmp  
 
 ## Important Parameters
 ### `--taxon-list`
