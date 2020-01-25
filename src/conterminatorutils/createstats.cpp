@@ -239,6 +239,7 @@ int createstats(int argc, const char **argv, const Command& command) {
         Debug(Debug::INFO)  << SSTR(i) << "\t" << totalContermCounter[i] << "\n";
     }
     delete t;
+    delete [] totalContermCounter;
     writer.close();
     reader.close();
     header.close();
