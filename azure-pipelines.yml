@@ -78,7 +78,7 @@ jobs:
             export export ASAN_OPTIONS=suppressions=${BUILD_SOURCESDIRECTORY}/ASan.supp
           fi
           ${BUILD_SOURCESDIRECTORY}/build/src/conterminator dna ${BUILD_SOURCESDIRECTORY}/example/dna.fasta ${BUILD_SOURCESDIRECTORY}/example/dna.mapping result tmp 
-          ${BUILD_SOURCESDIRECTORY}/build/src/conterminator prots ${BUILD_SOURCESDIRECTORY}/example/prots.fasta ${BUILD_SOURCESDIRECTORY}/example/prots.mapping result tmp 
+          ${BUILD_SOURCESDIRECTORY}/build/src/conterminator protein ${BUILD_SOURCESDIRECTORY}/example/prots.fasta ${BUILD_SOURCESDIRECTORY}/example/prots.mapping result tmp 
         displayName: Run Regression Suite
         condition: eq(variables['regression'], 1)
       - task: PublishPipelineArtifact@0
