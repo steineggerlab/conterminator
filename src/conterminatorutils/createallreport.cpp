@@ -195,6 +195,7 @@ int createallreport(int argc, const char **argv, const Command& command) {
             writer.writeData(resultData.c_str(), resultData.size(), queryKey, thread_idx);
 
         }
+        delete [] taxaCounter;
     }
     Debug(Debug::INFO) << "\nDetected potentail conterminetaion in the following Taxons: \n" ;
 
