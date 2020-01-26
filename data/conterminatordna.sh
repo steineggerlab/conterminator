@@ -150,7 +150,7 @@ if [ -n "$REMOVE_TMP" ]; then
   $MMSEQS rmdb "$TMP_PATH/aln_offset"
   $MMSEQS rmdb "$TMP_PATH/sequencedb"
   $MMSEQS rmdb "$TMP_PATH/sequencedb_h"
-  $MMSEQS rmdb "$TMP_PATHpref_cross"
+  $MMSEQS rmdb "$TMP_PATH/pref_cross"
   $MMSEQS rmdb "$TMP_PATH/pref"
   $MMSEQS rmdb "$TMP_PATH/aln"
 fi
