@@ -49,8 +49,6 @@ jobs:
           MPI: 0
           BUILD_TYPE: ASanOpt
     steps:
-      - checkout: self
-        submodules: true
       - script: |
           sudo apt-get update
           sudo apt-get -y install mpi-default-dev mpi-default-bin
