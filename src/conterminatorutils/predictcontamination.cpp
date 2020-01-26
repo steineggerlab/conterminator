@@ -70,8 +70,9 @@ int predictcontamination(int argc, const char **argv, const Command& command) {
                 int entryLen = Util::fast_atoi<int>(entry[4]);
                 int termId = Util::fast_atoi<int>(entry[5]);
 
-                int adjustedLen = ((entryLen - endPos) < lenThreshold) ? (entryLen - std::min(startPos, endPos)) : nLen;
-                adjustedLen = ((entryLen - endPos) < lenThreshold) ? std::max(startPos, endPos) : adjustedLen;
+                int rightFlankingLen = ((entryLen - endPos) < lenThreshold) ? (entryLen - std::min(startPos, endPos)) : nLen;
+                int leftFlankingLen = (std::max(startPos, endPos) < lenThreshold) ? std::max(startPos, endPos) : nLen;
+                const int adjustedLen = std::min(std::min(rightFlankingLen, leftFlankingLen), nLen);
                 if (termLen[termId] == 0 || adjustedLen > termLen[termId]) {
                     termLen[termId] = adjustedLen;
                     longestId[termId] = fastaId;

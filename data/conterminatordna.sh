@@ -129,7 +129,7 @@ if notExists  "$TMP_PATH/contam_region_aln_swap_offset_predconterm.dbtype"; then
         || fail "createtsv step died"
 fi
 
-if notExists "${3}_stats"; then
+if notExists "${3}_conterm_prediction"; then
     # shellcheck disable=SC2086
     $RUNNER "$MMSEQS" prefixid "$TMP_PATH/contam_region_aln_swap_offset_predconterm" "${3}_conterm_prediction" --threads 1 --tsv \
         || fail "prefixid step 1  died"
