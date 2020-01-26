@@ -5,13 +5,12 @@
 #include "FileUtil.h"
 #include "Debug.h"
 #include "Util.h"
-#include "filterdb.h"
 #include <algorithm>
 #include "Matcher.h"
 #include "IntervalArray.h"
 #include <set>
 #include <omptl/omptl_algorithm>
-#include <mmseqs/src/taxonomy/TaxonomyExpression.h>
+#include "LocalParameters.h"
 
 
 #ifdef OPENMP
@@ -20,7 +19,7 @@
 
 
 int crosstaxonfilter(int argc, const char **argv, const Command &command) {
-    Parameters &par = Parameters::getInstance();
+    LocalParameters &par = LocalParameters::getLocalInstance();
     par.parseParameters(argc, argv, command, true, 0, 0);
 
 
@@ -31,7 +30,7 @@ int crosstaxonfilter(int argc, const char **argv, const Command &command) {
     }
     bool isSorted = Util::readMapping(par.db1 + "_mapping", mapping);
     if (isSorted == false) {
-        std::stable_sort(mapping.begin(), mapping.end(), ffindexFilter::compareFirstInt());
+        std::stable_sort(mapping.begin(), mapping.end(), TaxonUtils::compareToFirstInt);
     }
     std::vector<std::string> ranks = Util::split(par.lcaRanks, ":");
 
@@ -46,9 +45,6 @@ int crosstaxonfilter(int argc, const char **argv, const Command &command) {
 
     Debug(Debug::INFO) << "Add taxonomy information ...\n";
 
-    TaxonomyExpression taxonomyExpression(par.taxonList);
-    size_t taxTermCount = taxonomyExpression.getTaxTerms().size();
-
     std::vector<std::string> blacklistStr = Util::split(par.blacklist, ",");
     std::vector<int> blackList;
     for (size_t i = 0; i < blacklistStr.size(); ++i) {
@@ -58,6 +54,8 @@ int crosstaxonfilter(int argc, const char **argv, const Command &command) {
     Debug::Progress progress(reader.getSize());
 #pragma omp parallel
     {
+        KingdomExpression kingdomExpression(par.kingdoms, *t);
+        size_t taxTermCount = kingdomExpression.getTaxTerms().size();
         size_t *taxaCounter = new size_t[taxTermCount];
         std::vector<TaxonUtils::TaxonInformation> elements;
         char buffer[4096];
@@ -80,7 +78,7 @@ int crosstaxonfilter(int argc, const char **argv, const Command &command) {
             unsigned int queryAncestorTermId = UINT_MAX;
 
             for (size_t j = 0; j < taxTermCount; ++j) {
-                int taxIndex = taxonomyExpression.isAncestorOf(*t, queryTaxon);
+                int taxIndex = kingdomExpression.isAncestorOf(queryTaxon);
                 if (taxIndex != -1) {
                     queryAncestorTermId = taxIndex;
                     break;
@@ -97,7 +95,7 @@ int crosstaxonfilter(int argc, const char **argv, const Command &command) {
                 continue;
             }
             // find taxonomical information
-            TaxonUtils::assignTaxonomy(elements, data, mapping, *t, taxonomyExpression, blackList, taxaCounter);
+            TaxonUtils::assignTaxonomy(elements, data, mapping, *t, kingdomExpression, blackList, taxaCounter);
             std::sort(elements.begin(), elements.end(), TaxonUtils::TaxonInformation::compareByTaxAndStart);
             int distinctTaxaCnt = 0;
 

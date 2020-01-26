@@ -15,6 +15,8 @@ public:
         }
         return static_cast<LocalParameters&>(LocalParameters::getInstance());
     }
+    PARAMETER(PARAM_KINGDOMS)
+    std::string kingdoms;
 
     std::vector<MMseqsParameter*> conterminatordna;
     std::vector<MMseqsParameter*> conterminatorprotein;
@@ -22,16 +24,17 @@ public:
     std::vector<MMseqsParameter*> createstats;
 private:
     LocalParameters() :
-            Parameters(){
+            Parameters(),
+            PARAM_KINGDOMS(PARAM_KINGDOMS_ID,"--kingdoms", "Compare across kingdoms", "",typeid(std::string), (void *) &kingdoms, "[,]"){
 
         // extractalignments
         extractalignments.push_back(&PARAM_BLACKLIST);
-        extractalignments.push_back(&PARAM_TAXON_LIST);
+        extractalignments.push_back(&PARAM_KINGDOMS);
         extractalignments.push_back(&PARAM_THREADS);
         extractalignments.push_back(&PARAM_V);
         // createstats
         createstats.push_back(&PARAM_BLACKLIST);
-        createstats.push_back(&PARAM_TAXON_LIST);
+        createstats.push_back(&PARAM_KINGDOMS);
         createstats.push_back(&PARAM_THREADS);
         createstats.push_back(&PARAM_V);
         // conterminatordna
@@ -47,7 +50,6 @@ private:
         conterminatorprotein = combineList(conterminatordna, createstats);
         conterminatorprotein = combineList(conterminatordna, extractalignments);
     }
-
     LocalParameters(LocalParameters const&);
     ~LocalParameters() {};
     void operator=(LocalParameters const&);

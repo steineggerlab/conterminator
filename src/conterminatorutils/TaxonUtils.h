@@ -8,16 +8,12 @@
 // Created by Martin Steinegger on 2019-07-17.
 //
 
-#ifndef CONTERMINATOR_MULTIPLETAXAS_H
-#define CONTERMINATOR_MULTIPLETAXAS_H
-
 #include <string>
 #include <algorithm>
-#include <mmseqs/src/taxonomy/TaxonomyExpression.h>
 #include "Util.h"
 #include "DBWriter.h"
-#include "filterdb.h"
 #include "NcbiTaxonomy.h"
+#include "KingdomExpression.h"
 
 class TaxonUtils{
 public:
@@ -99,11 +95,15 @@ public:
         }
     };
 
+    static bool compareToFirstInt(const std::pair<unsigned int, unsigned int>& lhs, const std::pair<unsigned int, unsigned int>& rhs){
+        return (lhs.first <= rhs.first);
+    }
+
     static unsigned int getTaxon(unsigned int id, std::vector<std::pair<unsigned int, unsigned int>> &mapping) {
         std::pair<unsigned int, unsigned int> val;
         val.first = id;
         std::vector<std::pair<unsigned int, unsigned int>>::iterator mappingIt = std::upper_bound(
-                mapping.begin(), mapping.end(), val, ffindexFilter::compareToFirstInt);
+                mapping.begin(), mapping.end(), val, compareToFirstInt);
         if (mappingIt->first != val.first) {
             return UINT_MAX;
         }
@@ -112,7 +112,7 @@ public:
 
     static std::vector<TaxonInformation> assignTaxonomy(std::vector<TaxonInformation>  &elements,
                                                         char *data, std::vector<std::pair<unsigned int, unsigned int>> & mapping,
-                                                        NcbiTaxonomy & t, TaxonomyExpression & taxonomyExpression,
+                                                        NcbiTaxonomy & t, KingdomExpression & kingdomExpression,
                                                         std::vector<int> &blacklist,
                                                         size_t * taxaCounter, bool parseDbKey = false) {
         elements.clear();
@@ -135,7 +135,7 @@ public:
                     goto next;
                 }
             }
-            termIndex = taxonomyExpression.isAncestorOf(t, taxon);
+            termIndex = kingdomExpression.isAncestorOf(taxon);
             if(termIndex != -1) {
                 taxaCounter[termIndex]++;
                 int startPos = Util::fast_atoi<int>(entry[4]);
@@ -156,6 +156,5 @@ public:
     }
 };
 
-#endif //CONTERMINATOR_MULTIPLETAXAS_H
 
 #endif //CONTERMINATOR_TAXONUTILS_H

@@ -18,7 +18,7 @@ void setConterminatorProteinDefaults(LocalParameters *p) {
     p->covMode = Parameters::COV_MODE_BIDIRECTIONAL;
     p->kmersPerSequence = 100;
     // (Bacteria, Archaea), Fungi, Animalia, Plantae, Rest of Eukaryota
-    p->taxonList = "(2|2157),2759";
+    p->kingdoms = "(2||2157),4751,33208,33090,(2759&&!4751&&!33208&&!33090)";
     // virus, unclassified sequences, other sequences,  artifical sequences, retro virus, environmental samples
     p->blacklist = "10239,12908,28384,81077,11632,340016,61964,48479,48510";
 }

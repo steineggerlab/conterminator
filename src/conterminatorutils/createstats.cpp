@@ -8,6 +8,7 @@
 #include <omptl/omptl_algorithm>
 #include <set>
 #include <limits>
+#include "LocalParameters.h"
 
 #ifdef OPENMP
 #include <omp.h>
@@ -15,13 +16,11 @@
 
 
 int createstats(int argc, const char **argv, const Command& command) {
-    Parameters &par = Parameters::getInstance();
+    LocalParameters &par = LocalParameters::getLocalInstance();
     // bacteria, archaea, eukaryotic, virus
     par.parseParameters(argc, argv, command, true, 0, 0);
 
     NcbiTaxonomy * t = NcbiTaxonomy::openTaxonomy(par.db1);
-    TaxonomyExpression taxonomyExpression(par.taxonList);
-    size_t taxTermCount = taxonomyExpression.getTaxTerms().size();
 
     std::vector<std::pair<unsigned int, unsigned int>> mapping;
     if (FileUtil::fileExists(std::string(par.db1 + "_mapping").c_str()) == false) {
@@ -30,7 +29,7 @@ int createstats(int argc, const char **argv, const Command& command) {
     }
     bool isSorted = Util::readMapping(par.db1 + "_mapping", mapping);
     if (isSorted == false) {
-        std::stable_sort(mapping.begin(), mapping.end(), ffindexFilter::compareFirstInt());
+        std::stable_sort(mapping.begin(), mapping.end(), TaxonUtils::compareToFirstInt);
     }
     std::vector<std::string> ranks = Util::split(par.lcaRanks, ":");
 
@@ -62,10 +61,10 @@ int createstats(int argc, const char **argv, const Command& command) {
     }
 
     Debug::Progress progress(reader.getSize());
-    size_t *totalContermCounter = new size_t[taxTermCount];
-    memset(totalContermCounter, 0, taxTermCount * sizeof(size_t));
 #pragma omp parallel
     {
+        KingdomExpression kingdomExpression(par.kingdoms, *t);
+        size_t taxTermCount = kingdomExpression.getTaxTerms().size();
         std::string resultData;
         resultData.reserve(4096);
         size_t *taxaCounter = new size_t[taxTermCount];
@@ -91,7 +90,7 @@ int createstats(int argc, const char **argv, const Command& command) {
             }
             // find taxonomical information
             memset(taxaCounter, 0, taxTermCount * sizeof(size_t));
-            TaxonUtils::assignTaxonomy(elements, data, mapping, *t, taxonomyExpression, blackList, taxaCounter, true);
+            TaxonUtils::assignTaxonomy(elements, data, mapping, *t, kingdomExpression, blackList, taxaCounter, true);
             // recount
             memset(taxaCounter, 0, taxTermCount * sizeof(size_t));
             for(size_t i = 0; i < elements.size(); i++){
@@ -126,7 +125,6 @@ int createstats(int argc, const char **argv, const Command& command) {
             if(minTaxTerm == -1 || maxTaxId == -1){
                 continue;
             }
-            __sync_fetch_and_add(&(totalContermCounter[minTaxTerm]), 1);
             struct Contamination{
                 unsigned int key;
                 int taxId;
@@ -236,11 +234,8 @@ int createstats(int argc, const char **argv, const Command& command) {
     }
     Debug(Debug::INFO) << "\nDetected potentail conterminetaion in the following Taxons: \n" ;
     Debug(Debug::INFO)  << "Term\tCount\n";
-    for(size_t i = 0; i < taxTermCount; i++){
-        Debug(Debug::INFO)  << SSTR(i) << "\t" << totalContermCounter[i] << "\n";
-    }
+
     delete t;
-    delete [] totalContermCounter;
     writer.close();
     reader.close();
     header.close();

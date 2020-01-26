@@ -31,27 +31,27 @@ Protein sequences can be processed as following:
     conterminator protein example/prots.fas example/prots.mapping result tmp  
 
 ## Important Parameters
-### `--taxon-list`
+### `--kingdom`
 
 This parameters controls across which ranks contaminations should be considered. 
 Each taxon definition is seperated by a `,` e.g. to search for contamination between bacteria and human use `--taxon-list 2,9606`. 
 It is also possible to use more advanced expressions for contamination rules, through the following operators:
 
     ! NEGATION 
-    | OR  
-    & AND 
+    || OR  
+    && AND 
 
 The default rule is as follows:
 
-    (2|2157),4751,33208,33090,(2759&!4751&!33208&!33090)   
+    2||2157,4751,33208,33090,2759&&!4751&&!33208&&!33090   
     
 This searches for contamination between the following taxa:
 
-    (2|2157) # Bacteria OR Archaea 
+    2||2157  # Bacteria OR Archaea 
     4751     # Fungi
     33208    # Metazoa
     33090    # Viridiplantae  
-    (2759&!4751&!33208&!33090) # Eukaryota without Fungi Metazoa and Viridiplantae
+    2759&&!4751&&!33208&&!33090 # Eukaryota without Fungi Metazoa and Viridiplantae
 
 # Publication
 

@@ -8,6 +8,7 @@
 #include <omptl/omptl_algorithm>
 #include <set>
 #include <limits>
+#include <LocalParameters.h>
 
 #ifdef OPENMP
 #include <omp.h>
@@ -42,13 +43,11 @@ void findLeftAndRightPos(int startPos, int endPos, std::pair<size_t, size_t> sta
 
 
 int createallreport(int argc, const char **argv, const Command& command) {
-    Parameters &par = Parameters::getInstance();
+    LocalParameters &par = LocalParameters::getLocalInstance();
     // bacteria, archaea, eukaryotic, virus
     par.parseParameters(argc, argv, command, true, 0, 0);
 
     NcbiTaxonomy * t = NcbiTaxonomy::openTaxonomy(par.db1);
-    TaxonomyExpression taxonomyExpression(par.taxonList);
-    size_t taxTermCount = taxonomyExpression.getTaxTerms().size();
 
     std::vector<std::pair<unsigned int, unsigned int>> mapping;
     if (FileUtil::fileExists(std::string(par.db1 + "_mapping").c_str()) == false) {
@@ -57,7 +56,7 @@ int createallreport(int argc, const char **argv, const Command& command) {
     }
     bool isSorted = Util::readMapping(par.db1 + "_mapping", mapping);
     if (isSorted == false) {
-        std::stable_sort(mapping.begin(), mapping.end(), ffindexFilter::compareFirstInt());
+        std::stable_sort(mapping.begin(), mapping.end(), TaxonUtils::compareToFirstInt);
     }
     std::vector<std::string> ranks = Util::split(par.lcaRanks, ":");
 
@@ -109,6 +108,8 @@ int createallreport(int argc, const char **argv, const Command& command) {
     Debug::Progress progress(reader.getSize());
 #pragma omp parallel
     {
+        KingdomExpression kingdomExpression(par.kingdoms, *t);
+        size_t taxTermCount = kingdomExpression.getTaxTerms().size();
         std::string resultData;
         resultData.reserve(4096);
         size_t *taxaCounter = new size_t[taxTermCount];
@@ -134,7 +135,7 @@ int createallreport(int argc, const char **argv, const Command& command) {
                 continue;
             }
             // find taxonomical information
-            TaxonUtils::assignTaxonomy(elements, data, mapping, *t, taxonomyExpression, blackList, taxaCounter, true);
+            TaxonUtils::assignTaxonomy(elements, data, mapping, *t, kingdomExpression, blackList, taxaCounter, true);
             std::sort(elements.begin(), elements.end(), TaxonUtils::TaxonInformation::compareByDbKeyAndStart);
 
             size_t writePos = -1;

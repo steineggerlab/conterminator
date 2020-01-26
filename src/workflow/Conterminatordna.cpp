@@ -27,7 +27,8 @@ void setConterminatorWorkflowDefaults(LocalParameters *p) {
     p->sequenceOverlap = 0;
     p->kmersPerSequence = 100;
     p->rescoreMode = 2;
-    p->minDiagScoreThr = p->alnLenThr;
+    // scoring with k-mers not --diag-score diagonal scoring (prefilter)
+    p->minDiagScoreThr = p->alnLenThr/4;
     // leave ungapped alignment untouched
     if(p->alignmentMode != Parameters::ALIGNMENT_MODE_UNGAPPED){
         p->alignmentMode = Parameters::ALIGNMENT_MODE_SCORE_COV_SEQID;
@@ -52,7 +53,7 @@ void setConterminatorWorkflowDefaults(LocalParameters *p) {
     p->diagonalScoring = 0;
     p->compBiasCorrection = 0;
     // (Bacteria, Archaea), Fungi, Animalia, Plantae, Rest of Eukaryota
-    p->taxonList = "(2|2157),4751,33208,33090,(2759&!4751&!33208&!33090)";
+    p->kingdoms = "(2||2157),4751,33208,33090,(2759&&!4751&&!33208&&!33090)";
     // virus, unclassified sequences, other sequences,  artifical sequences, retro virus, environmental samples
     p->blacklist = "10239,12908,28384,81077,11632,340016,61964,48479,48510";
 }
