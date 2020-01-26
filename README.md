@@ -1,4 +1,5 @@
 # Conterminator
+[![Build Status](https://dev.azure.com/themartinsteinegger/conterminator/_apis/build/status/martin-steinegger.conterminator?branchName=master)](https://dev.azure.com/themartinsteinegger/conterminator/_build/latest?definitionId=2&branchName=master)
 ## Detection of contamination in nucleotide and protein sequence sets
 Conterminator is an efficient method to detect incorrectly labeled sequences across kingdoms by an exhaustive all-against-all sequence comparison.
 It is free open-source GPLv3-licensed software for Linux and macOS, and is developed on top of modules provided by [MMseqs2](https://github.com/soedinglab/MMseqs2).
