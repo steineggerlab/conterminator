@@ -10,4 +10,5 @@ extern int extractalignments(int argc, const char** argv, const Command &command
 extern int crosstaxonfilter(int argc, const char **argv, const Command &command);
 extern int createstats(int argc, const char** argv, const Command &command);
 extern int createallreport(int argc, const char** argv, const Command &command);
+extern int crosstaxonfilterorf(int argc, const char** argv, const Command &command);
 #endif

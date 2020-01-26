@@ -22,6 +22,7 @@ public:
     std::vector<MMseqsParameter*> conterminatorprotein;
     std::vector<MMseqsParameter*> extractalignments;
     std::vector<MMseqsParameter*> createstats;
+    std::vector<MMseqsParameter*> crosstaxonfilterorf;
 private:
     LocalParameters() :
             Parameters(),
@@ -32,6 +33,11 @@ private:
         extractalignments.push_back(&PARAM_KINGDOMS);
         extractalignments.push_back(&PARAM_THREADS);
         extractalignments.push_back(&PARAM_V);
+        // crosstaxonfilterorf
+        crosstaxonfilterorf.push_back(&PARAM_BLACKLIST);
+        crosstaxonfilterorf.push_back(&PARAM_KINGDOMS);
+        crosstaxonfilterorf.push_back(&PARAM_THREADS);
+        crosstaxonfilterorf.push_back(&PARAM_V);
         // createstats
         createstats.push_back(&PARAM_BLACKLIST);
         createstats.push_back(&PARAM_KINGDOMS);

@@ -36,19 +36,25 @@ fi
 
 if notExists "$TMP_PATH/db_rev_split"; then
     # shellcheck disable=SC2086
-    "$MMSEQS" splitsequence "$TMP_PATH/sequencedb" "$TMP_PATH/db_rev_split"  ${SPLITSEQ_PAR} \
+    "$MMSEQS" splitsequence "$TMP_PATH/sequencedb" "$TMP_PATH/db_rev_split" ${SPLITSEQ_PAR} \
         || fail "splitsequence step died"
 fi
 
-if notExists "$TMP_PATH/pref"; then
+if notExists "$TMP_PATH/pref.dbtype"; then
     # shellcheck disable=SC2086
-    $RUNNER "$MMSEQS" kmermatcher "$TMP_PATH/db_rev_split" "$TMP_PATH/pref"  ${KMERMATCHER_PAR} \
+    $RUNNER "$MMSEQS" kmermatcher "$TMP_PATH/db_rev_split" "$TMP_PATH/pref" ${KMERMATCHER_PAR} \
         || fail "kmermatcher step died"
+fi
+
+if notExists "$TMP_PATH/pref_cross.dbtype"; then
+    # shellcheck disable=SC2086
+    $RUNNER "$MMSEQS" crosstaxonfilterorf "$TMP_PATH/sequencedb" "$TMP_PATH/db_rev_split_h" "$TMP_PATH/pref" "$TMP_PATH/pref_cross" ${CROSSTAXONFILTERORF_PAR} \
+        || fail "crosstaxonfilterorf step died"
 fi
 
 if notExists "$TMP_PATH/aln.dbtype"; then
     # shellcheck disable=SC2086
-    $RUNNER "$MMSEQS" rescorediagonal "$TMP_PATH/db_rev_split" "$TMP_PATH/db_rev_split" "$TMP_PATH/pref" "$TMP_PATH/aln" ${RESCORE_DIAGONAL1_PAR} \
+    $RUNNER "$MMSEQS" rescorediagonal "$TMP_PATH/db_rev_split" "$TMP_PATH/db_rev_split" "$TMP_PATH/pref_cross" "$TMP_PATH/aln" ${RESCORE_DIAGONAL1_PAR} \
         || fail "rescorediagonal step died"
 fi
 
@@ -144,6 +150,7 @@ if [ -n "$REMOVE_TMP" ]; then
   $MMSEQS rmdb "$TMP_PATH/aln_offset"
   $MMSEQS rmdb "$TMP_PATH/sequencedb"
   $MMSEQS rmdb "$TMP_PATH/sequencedb_h"
+  $MMSEQS rmdb "$TMP_PATHpref_cross"
   $MMSEQS rmdb "$TMP_PATH/pref"
   $MMSEQS rmdb "$TMP_PATH/aln"
 fi

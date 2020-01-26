@@ -98,7 +98,7 @@ int conterminatordna(int argc, const char **argv, const Command &command) {
     cmd.addVariable("RESCORE_DIAGONAL1_PAR", par.createParameterString(par.rescorediagonal).c_str());
     cmd.addVariable("THREADS_PAR", par.createParameterString(par.onlythreads).c_str());
     cmd.addVariable("EXTRACT_FRAMES_PAR", par.createParameterString(par.extractframes).c_str());
-
+    cmd.addVariable("CROSSTAXONFILTERORF_PAR",  par.createParameterString(par.crosstaxonfilterorf).c_str());
     par.kmerSize = 24;
     cmd.addVariable("KMERMATCHER_PAR", par.createParameterString(par.kmermatcher).c_str());
     par.kmerSize = 15;
