@@ -1,13 +1,22 @@
 # Conterminator
+[![Build Status](https://dev.azure.com/themartinsteinegger/conterminator/_apis/build/status/martin-steinegger.conterminator?branchName=master)](https://dev.azure.com/themartinsteinegger/conterminator/_build/latest?definitionId=2&branchName=master)
 ## Detection of contamination in nucleotide and protein sequence sets
 Conterminator is an efficient method to detect incorrectly labeled sequences across kingdoms by an exhaustive all-against-all sequence comparison.
 It is free open-source GPLv3-licensed software for Linux and macOS, and is developed on top of modules provided by [MMseqs2](https://github.com/soedinglab/MMseqs2).
 
 <p align="center"><img src="https://raw.githubusercontent.com/martin-steinegger/conterminator/master/.github/marv6.png" height="256" /></p>
 
+
+# Install 
+Conterminator requires a 64-bit Linux system (check with uname -a | grep x86_64) with at least the SSE4.1 instruction set (check by executing `cat /proc/cpuinfo | grep sse4_1`.
+   
+    # SSE4.1
+    wget https://mmseqs.com/conterminator/conterminator-linux-sse41.tar.gz; tar xvfz conterminator-linux-sse41.tar.gz; export PATH=$(pwd)/conterminator/:$PATH
+    # AVX2
+    wget https://mmseqs.com/conterminator/conterminator-linux-avx2.tar.gz; tar xvfz conterminator-linux-avx2.tar.gz; export PATH=$(pwd)/conterminator/:$PATH
  
-# Installation
-Conterminator can be installed by compiling from source. It requires a 64-bit system (check with uname -a | grep x86_64) with at least the SSE4.1 instruction set (check by executing `cat /proc/cpuinfo | grep sse4_1` on Linux or `sysctl -a | grep machdep.cpu.features | grep SSE4.1` on macOS).
+# Compile from source
+Conterminator can be installed by compiling from source. 
 
     git clone --recursive https://github.com/martin-steinegger/conterminator 
     mkdir conterminator/build && cd conterminator/build
@@ -15,6 +24,8 @@ Conterminator can be installed by compiling from source. It requires a 64-bit sy
     make -j 4
     make install
     export PATH=$(pwd)/bin/:$PATH 
+    
+    
     
 # Getting started
 
