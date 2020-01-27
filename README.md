@@ -66,4 +66,4 @@ This searches for contamination between the following taxa:
 
 # Publication
 
-Poster: [Terminating contamination—Large-scale search identifies >2,000,000 contaminated entries in GenBank](https://f1000research.com/posters/8-1861)
+[Terminating contamination: large-scale search identifies more than 2,000,000 contaminated entries in GenBank. biorxiv, doi: 10.1101/2020.01.26.920173 (2020)](https://biorxiv.org/cgi/content/short/2020.01.26.920173v1)
