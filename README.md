@@ -4,7 +4,10 @@
 Conterminator is an efficient method to detect incorrectly labeled sequences across kingdoms by an exhaustive all-against-all sequence comparison.
 It is free open-source GPLv3-licensed software for Linux and macOS, and is developed on top of modules provided by [MMseqs2](https://github.com/soedinglab/MMseqs2).
 
+
 <p align="center"><img src="https://raw.githubusercontent.com/martin-steinegger/conterminator/master/.github/marv6.png" height="256" /></p>
+
+[Terminating contamination: large-scale search identifies more than 2,000,000 contaminated entries in GenBank. biorxiv, doi: 10.1101/2020.01.26.920173 (2020)](https://biorxiv.org/cgi/content/short/2020.01.26.920173v1)
 
 
 # Install 
@@ -14,6 +17,8 @@ Conterminator requires a 64-bit Linux system (check with uname -a | grep x86_64)
     wget https://mmseqs.com/conterminator/conterminator-linux-sse41.tar.gz; tar xvfz conterminator-linux-sse41.tar.gz; export PATH=$(pwd)/conterminator/:$PATH
     # AVX2
     wget https://mmseqs.com/conterminator/conterminator-linux-avx2.tar.gz; tar xvfz conterminator-linux-avx2.tar.gz; export PATH=$(pwd)/conterminator/:$PATH
+    # conda
+    conda install -c bioconda conterminator
  
 # Compile from source
 Conterminator can be installed by compiling from source. 
@@ -64,6 +69,3 @@ This searches for contamination between the following taxa:
     33090    # Viridiplantae  
     2759&&!4751&&!33208&&!33090 # Eukaryota without Fungi Metazoa and Viridiplantae
 
-# Publication
-
-[Terminating contamination: large-scale search identifies more than 2,000,000 contaminated entries in GenBank. biorxiv, doi: 10.1101/2020.01.26.920173 (2020)](https://biorxiv.org/cgi/content/short/2020.01.26.920173v1)
