@@ -11,7 +11,7 @@ It is free open-source GPLv3-licensed software for Linux and macOS, and is devel
 
 
 # Install 
-Conterminator requires a 64-bit Linux system (check with uname -a | grep x86_64) with at least the SSE4.1 instruction set (check by executing `cat /proc/cpuinfo | grep sse4_1`.
+Conterminator requires a 64-bit Linux system (check with `uname -a | grep x86_64 | wc -l` is greater than `0`) with at least the SSE4.1 instruction set (check if the output of `cat /proc/cpuinfo | grep sse4_1 | wc -l` is greater than `0`).
    
     # SSE4.1
     wget https://mmseqs.com/conterminator/conterminator-linux-sse41.tar.gz; tar xvfz conterminator-linux-sse41.tar.gz; export PATH=$(pwd)/conterminator/:$PATH
@@ -19,18 +19,6 @@ Conterminator requires a 64-bit Linux system (check with uname -a | grep x86_64)
     wget https://mmseqs.com/conterminator/conterminator-linux-avx2.tar.gz; tar xvfz conterminator-linux-avx2.tar.gz; export PATH=$(pwd)/conterminator/:$PATH
     # conda
     conda install -c bioconda conterminator
- 
-# Compile from source
-Conterminator can be installed by compiling from source. 
-
-    git clone --recursive https://github.com/martin-steinegger/conterminator 
-    mkdir conterminator/build && cd conterminator/build
-    cmake -DCMAKE_BUILD_TYPE=RELEASE -DCMAKE_INSTALL_PREFIX=. ..
-    make -j 4
-    make install
-    export PATH=$(pwd)/bin/:$PATH 
-    
-    
     
 # Getting started
 
@@ -80,4 +68,14 @@ This searches for contamination between the following taxa:
     33208    # Metazoa
     33090    # Viridiplantae  
     2759&&!4751&&!33208&&!33090 # Eukaryota without Fungi Metazoa and Viridiplantae
+
+# Compile from source
+Conterminator can be installed by compiling from source. 
+
+    git clone --recursive https://github.com/martin-steinegger/conterminator 
+    mkdir conterminator/build && cd conterminator/build
+    cmake -DCMAKE_BUILD_TYPE=RELEASE -DCMAKE_INSTALL_PREFIX=. ..
+    make -j 4
+    make install
+    export PATH=$(pwd)/bin/:$PATH 
 
