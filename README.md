@@ -45,6 +45,18 @@ Conterminator requires a FASTA input and `mappingFile` file, which maps FASTA id
 Protein sequences can be processed as following:        
 
     conterminator protein example/prots.fas example/prots.mapping result tmp  
+    
+## Mapping file 
+
+Conterminator needs a mapping file, which assigns fasta identifier to taxonomical identifier. The `mapping` file consist of two columns separated by tabulator, (1) fasta identifier and (2) [NCBI taxonomy identifier](https://www.ncbi.nlm.nih.gov/taxonomy). 
+In default the fasta identifier is parsed up to the first blank space, while for GenBank, Tremble, Swissprot the unique identifier is used.
+
+Example to detect contamination in the NT database:
+
+    blastdbcmd -db nt -entry all > nt.fna
+    blastdbcmd -db nt -entry all -outfmt "%a %T" > nt.fna.taxidmapping
+    conterminator dna nt.fna nt.fna.taxidmapping nt.result tmp
+
 
 ## Important Parameters
 ### `--kingdom`
