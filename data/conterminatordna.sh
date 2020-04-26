@@ -29,9 +29,15 @@ if notExists "$TMP_PATH/sequencedb"; then
 fi
 
 if notExists "$TMP_PATH/sequencedb_mapping"; then
+if [ "$DOWNLOAD_NCBITAXDUMP" -eq "0" ]; then
+    # shellcheck disable=SC2086
+    "$MMSEQS" createtaxdb "$TMP_PATH/sequencedb" "${TMP_PATH}/createtaxdb" --tax-mapping-file "${TAXMAPPINGFILE}" --ncbi-tax-dump "${NCBITAXINFO}" ${ONLYVERBOSITY} \
+        || fail "createtaxdb step died"
+else
     # shellcheck disable=SC2086
     "$MMSEQS" createtaxdb "$TMP_PATH/sequencedb" "${TMP_PATH}/createtaxdb" --tax-mapping-file "${TAXMAPPINGFILE}" ${ONLYVERBOSITY} \
         || fail "createtaxdb step died"
+fi
 fi
 
 if notExists "$TMP_PATH/db_rev_split"; then
