@@ -29,6 +29,7 @@ int conterminatorprotein(int argc, const char **argv, const Command &command) {
     for(size_t i = 0; i < par.conterminatorprotein.size(); i++){
         par.conterminatorprotein[i]->category |= MMseqsParameter::COMMAND_EXPERT;
     }
+    par.PARAM_NCBI_TAX_DUMP.category = MMseqsParameter::COMMAND_MISC;
     par.PARAM_TAXON_LIST.category = MMseqsParameter::COMMAND_MISC;
     par.PARAM_BLACKLIST.category = MMseqsParameter::COMMAND_MISC;
     par.PARAM_KMER_PER_SEQ.category = MMseqsParameter::COMMAND_PREFILTER;
@@ -51,6 +52,14 @@ int conterminatorprotein(int argc, const char **argv, const Command &command) {
 
     par.filenames.pop_back();
     par.filenames.push_back(tmpDir);
+
+    if( par.PARAM_NCBI_TAX_DUMP.wasSet == false){
+        cmd.addVariable("DOWNLOAD_NCBITAXDUMP", "1");
+    }else{
+        cmd.addVariable("DOWNLOAD_NCBITAXDUMP", "0");
+        cmd.addVariable("NCBITAXINFO", par.ncbiTaxDump.c_str());
+    }
+
     cmd.addVariable("CREATEDB_PAR", par.createParameterString(par.createdb).c_str());
     cmd.addVariable("TAXMAPPINGFILE", par.db2.c_str());
     cmd.addVariable("REMOVE_TMP", par.removeTmpFiles ? "TRUE" : NULL);
