@@ -7,7 +7,7 @@ It is a free open-source GPLv3-licensed software for Linux and macOS, and is dev
 
 <p align="center"><img src="https://raw.githubusercontent.com/martin-steinegger/conterminator/master/.github/marv6.png" height="256" /></p>
 
-[Terminating contamination: large-scale search identifies more than 2,000,000 contaminated entries in GenBank. biorxiv, doi: 10.1101/2020.01.26.920173 (2020)](https://biorxiv.org/cgi/content/short/2020.01.26.920173v1)
+[Terminating contamination: large-scale search identifies more than 2,000,000 contaminated entries in GenBank. Genome Biology, doi: 10.1186/s13059-020-02023-1 (2020)](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-020-02023-1)
 
 
 # Install 
