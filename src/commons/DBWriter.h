@@ -7,10 +7,11 @@
 #include <vector>
 
 #include "DBReader.h"
+#include "MemoryTracker.h"
 
 template <typename T> class DBReader;
 
-class DBWriter {
+class DBWriter : public MemoryTracker  {
 public:
     DBWriter(const char* dataFileName, const char* indexFileName, unsigned int threads, size_t mode, int dbtype);
 
@@ -18,7 +19,7 @@ public:
 
     void open(size_t bufferSize = SIZE_MAX);
 
-    void close(bool merge = false);
+    void close(bool merge = false, bool needsSort = true);
 
     char* getDataFileName() { return dataFileName; }
 
@@ -33,10 +34,6 @@ public:
     static size_t indexToBuffer(char *buff1, unsigned int key, size_t offsetStart, size_t len);
 
     void alignToPageSize(int thrIdx = 0);
-
-    void mergeFiles(DBReader<unsigned int>& qdbr,
-                    const std::vector<std::pair<std::string, std::string> >& files,
-                    const std::vector<std::string>& prefixes);
 
     void sortDatafileByIdOrder(DBReader<unsigned int>& qdbr);
 
@@ -67,6 +64,8 @@ public:
     bool isClosed(){
         return closed;
     }
+
+    static void sortIndex(const char *inFileNameIndex, const char *outFileNameIndex, const bool lexicographicOrder);
 private:
     size_t addToThreadBuffer(const void *data, size_t itmesize, size_t nitems, int threadIdx);
     void writeThreadBuffer(unsigned int idx, size_t dataSize);
@@ -75,11 +74,10 @@ private:
 
     static void mergeResults(const char *outFileName, const char *outFileNameIndex,
                              const char **dataFileNames, const char **indexFileNames,
-                             unsigned long fileCount, bool mergeDatafiles, bool lexicographicOrder = false);
+                             unsigned long fileCount, bool mergeDatafiles,
+                             bool lexicographicOrder = false, bool indexNeedsToBeSorted = true);
 
     static void mergeIndex(const char** indexFilenames, unsigned int fileCount, const std::vector<size_t> &dataSizes);
-
-    static void sortIndex(const char *inFileNameIndex, const char *outFileNameIndex, const bool lexicographicOrder);
 
     char* dataFileName;
     char* indexFileName;
@@ -103,7 +101,6 @@ private:
     static const int INIT_STATE=0;
     static const int NOTCOMPRESSED=1;
     static const int COMPRESSED=2;
-
     ZSTD_CStream** cstream;
 
     const unsigned int threads;

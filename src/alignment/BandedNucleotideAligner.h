@@ -17,14 +17,14 @@ class BandedNucleotideAligner {
 public:
 
 
-    BandedNucleotideAligner(BaseMatrix *subMat, size_t maxSequenceLength, int gapo, int gape);
+    BandedNucleotideAligner(BaseMatrix *subMat, size_t maxSequenceLength, int gapo, int gape, int zdrop);
 
     ~BandedNucleotideAligner();
 
     void initQuery(Sequence *q);
 
     s_align align(Sequence * targetSeqObj, int diagonal, bool reverse,
-                  std::string & backtrace, int & aaIds, EvalueComputation * evaluer, bool wrappedScoring=false);
+                  std::string & backtrace, EvalueComputation * evaluer, bool wrappedScoring=false);
 
 private:
     SubstitutionMatrix::FastMatrix fastMatrix;
@@ -42,4 +42,5 @@ private:
 //    uint32_t * cigar;
     int gapo;
     int gape;
+    int zdrop;
 };

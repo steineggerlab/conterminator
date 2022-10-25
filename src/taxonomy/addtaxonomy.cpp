@@ -4,35 +4,18 @@
 #include "FileUtil.h"
 #include "Debug.h"
 #include "Util.h"
-#include <algorithm>
+#include "MappingReader.h"
 
 #ifdef OPENMP
 #include <omp.h>
 #endif
 
-
-static bool compareToFirstInt(const std::pair<unsigned int, unsigned int> &lhs, const std::pair<unsigned int, unsigned int> &rhs) {
-    return (lhs.first <= rhs.first);
-}
-
 int addtaxonomy(int argc, const char **argv, const Command &command) {
     Parameters &par = Parameters::getInstance();
     par.parseParameters(argc, argv, command, true, 0, 0);
 
-    std::vector<std::pair<unsigned int, unsigned int>> mapping;
-    if (FileUtil::fileExists((par.db1 + "_mapping").c_str()) == false) {
-        Debug(Debug::ERROR) << par.db1 << "_mapping does not exist. Run createtaxdb to create taxonomy mapping.\n";
-        EXIT(EXIT_FAILURE);
-    }
-    const bool isSorted = Util::readMapping(par.db1 + "_mapping", mapping);
-    if (isSorted == false) {
-        std::stable_sort(mapping.begin(), mapping.end(), compareToFirstInt);
-    }
-    if (mapping.size() == 0) {
-        Debug(Debug::ERROR) << par.db1 << "_mapping is empty. Rerun createtaxdb to recreate taxonomy mapping.\n";
-        EXIT(EXIT_FAILURE);
-    }
     NcbiTaxonomy *t = NcbiTaxonomy::openTaxonomy(par.db1);
+    MappingReader mapping(par.db1);
     std::vector<std::string> ranks = NcbiTaxonomy::parseRanks(par.lcaRanks);
 
     DBReader<unsigned int> reader(par.db2.c_str(), par.db2Index.c_str(), par.threads, DBReader<unsigned int>::USE_DATA | DBReader<unsigned int>::USE_INDEX);
@@ -65,15 +48,13 @@ int addtaxonomy(int argc, const char **argv, const Command &command) {
             if (length == 1) {
                 continue;
             }
-            std::pair<unsigned int, unsigned int> val;
-            std::vector<std::pair<unsigned int, unsigned int> >::iterator mappingIt;
+            unsigned int taxon = 0;
             if (par.pickIdFrom == Parameters::EXTRACT_QUERY) {
-                val.first = key;
-                mappingIt = std::upper_bound(mapping.begin(), mapping.end(), val, compareToFirstInt);
-            }
-            if (mappingIt == mapping.end() || mappingIt->first != val.first) {
-                taxonNotFound++;
-                continue;
+                taxon = mapping.lookup(key);
+                if (taxon == 0) {
+                    taxonNotFound++;
+                    continue;
+                }
             }
 
             while (*data != '\0') {
@@ -85,15 +66,13 @@ int addtaxonomy(int argc, const char **argv, const Command &command) {
                 }
                 if (par.pickIdFrom == Parameters::EXTRACT_TARGET) {
                     unsigned int id = Util::fast_atoi<unsigned int>(entry[0]);
-                    val.first = id;
-                    mappingIt = std::upper_bound(mapping.begin(), mapping.end(), val, compareToFirstInt);
+                    taxon = mapping.lookup(id);
+                    if (taxon == 0) {
+                        taxonNotFound++;
+                        data = Util::skipLine(data);
+                        continue;
+                    }
                 }
-                if (mappingIt == mapping.end() || mappingIt->first != val.first) {
-                    taxonNotFound++;
-                    data = Util::skipLine(data);
-                    continue;
-                }
-                unsigned int taxon = mappingIt->second;
                 TaxonNode const *node = t->taxonNode(taxon, false);
                 if (node == NULL) {
                     deletedNodes++;
@@ -103,15 +82,25 @@ int addtaxonomy(int argc, const char **argv, const Command &command) {
                 char *nextData = Util::skipLine(data);
                 size_t dataSize = nextData - data;
                 result.append(data, dataSize - 1);
-                result += '\t' + SSTR(node->taxId) + '\t' + node->rank + '\t' + node->name;
+                result.append(1, '\t');
+                result.append(SSTR(node->taxId));
+                result.append(1, '\t');
+                result.append(t->getString(node->rankIdx));
+                result.append(1, '\t');
+                result.append(t->getString(node->nameIdx));
                 if (!ranks.empty()) {
-                    std::string lcaRanks = Util::implode(t->AtRanks(node, ranks), ';');
-                    result += '\t' + lcaRanks;
+                    result.append(1, '\t');
+                    result.append(Util::implode(t->AtRanks(node, ranks), ';'));
                 }
-                if (par.showTaxLineage) {
-                    result += '\t' + t->taxLineage(node);
+                if (par.showTaxLineage == 1) {
+                    result.append(1, '\t');
+                    result.append(t->taxLineage(node, true));
                 }
-                result += '\n';
+                if (par.showTaxLineage == 2) {
+                    result.append(1, '\t');
+                    result.append(t->taxLineage(node, false));
+                }
+                result.append(1, '\n');
                 data = Util::skipLine(data);
             }
             writer.writeData(result.c_str(), result.size(), key, thread_idx);

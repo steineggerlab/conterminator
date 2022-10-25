@@ -1,11 +1,9 @@
 set(HAVE_MPI 0 CACHE BOOL "Have MPI")
-set(HAVE_AVX2 0 CACHE BOOL "Have AVX2")
-set(HAVE_SSE4_1 0 CACHE BOOL "Have SSE4.1")
-set(HAVE_NEON 0 CACHE BOOL "Have NEON")
 set(HAVE_TESTS 0 CACHE BOOL "Have Tests")
 set(HAVE_SHELLCHECK 1 CACHE BOOL "Have ShellCheck")
 set(HAVE_GPROF 0 CACHE BOOL "Have GPROF Profiler")
 set(ENABLE_WERROR 0 CACHE BOOL "Enable Warnings as Errors")
+#set(DISABLE_LTO 0 CACHE BOOL "Disable link-time optimization in non-debug builds")
 set(REQUIRE_OPENMP 1 CACHE BOOL "Require availability of OpenMP")
 
 include(AppendTargetProperty)
@@ -58,31 +56,33 @@ target_include_directories(mmseqs-framework PUBLIC .)
 
 add_dependencies(mmseqs-framework generated)
 
-if (CMAKE_BUILD_TYPE MATCHES RELEASE OR CMAKE_BUILD_TYPE MATCHES RELWITHDEBINFO)
-    if (CMAKE_COMPILER_IS_ICC)
-        append_target_property(mmseqs-framework COMPILE_FLAGS -ipo -no-prec-div -xHost)
-        append_target_property(mmseqs-framework LINK_FLAGS -ipo -no-prec-div -xHost)
-    else ()
-        append_target_property(mmseqs-framework COMPILE_FLAGS -ffast-math -ftree-vectorize -fno-strict-aliasing)
-        append_target_property(mmseqs-framework LINK_FLAGS -ffast-math -ftree-vectorize -fno-strict-aliasing)
-    endif ()
-endif ()
+#if (NOT DISABLE_LTO)
+#    string(TOUPPER "${CMAKE_BUILD_TYPE}" uppercase_CMAKE_BUILD_TYPE)
+#    if (uppercase_CMAKE_BUILD_TYPE MATCHES "^(RELEASE|RELWITHDEBINFO|MINSIZEREL)$")
+#        cmake_policy(SET CMP0069 NEW)
+#        include(CheckIPOSupported)
+#        check_ipo_supported(RESULT IPO_SUPPORTED)
+#        if (IPO_SUPPORTED)
+#            set_property(TARGET mmseqs-framework PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+#        endif ()
+#    endif ()
+#endif ()
 
-append_target_property(mmseqs-framework COMPILE_FLAGS ${MMSEQS_CXX_FLAGS} -fno-exceptions -pedantic -Wall -Wextra -Wdisabled-optimization)
-append_target_property(mmseqs-framework LINK_FLAGS ${MMSEQS_CXX_FLAGS} -fno-exceptions -pedantic -Wall -Wextra -Wdisabled-optimization)
+append_target_property(mmseqs-framework COMPILE_FLAGS ${MMSEQS_CXX_FLAGS} -pedantic -Wall -Wextra -Wdisabled-optimization)
+append_target_property(mmseqs-framework LINK_FLAGS ${MMSEQS_CXX_FLAGS} -pedantic -Wall -Wextra -Wdisabled-optimization)
+if (NOT EMSCRIPTEN)
+    append_target_property(mmseqs-framework COMPILE_FLAGS -fno-exceptions)
+    append_target_property(mmseqs-framework LINK_FLAGS -fno-exceptions)
+endif()
 
 if (ENABLE_WERROR)
     append_target_property(mmseqs-framework COMPILE_FLAGS -Werror)
     append_target_property(mmseqs-framework LINK_FLAGS -Werror)
 endif()
 
-if (CYGWIN OR ${HAVE_NEON})
-    target_compile_definitions(mmseqs-framework PUBLIC -D_GNU_SOURCE=1)
-endif ()
-
 # needed for concat.h
-include(CheckCXXSourceRuns)
-check_cxx_source_runs("
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles("
         #include <stdlib.h>
         #include <fcntl.h>
         #include <stdio.h>
@@ -99,7 +99,7 @@ if (HAVE_POSIX_FADVISE)
     target_compile_definitions(mmseqs-framework PUBLIC -DHAVE_POSIX_FADVISE=1)
 endif ()
 
-check_cxx_source_runs("
+check_cxx_source_compiles("
         #include <stdlib.h>
         #include <fcntl.h>
         #include <stdio.h>
@@ -117,42 +117,29 @@ if (HAVE_POSIX_MADVISE)
     target_compile_definitions(mmseqs-framework PUBLIC -DHAVE_POSIX_MADVISE=1)
 endif ()
 
-# SIMD instruction sets support
-if (HAVE_AVX2)
-    target_compile_definitions(mmseqs-framework PUBLIC -DAVX2=1)
-    if (CMAKE_COMPILER_IS_CLANG)
-        append_target_property(mmseqs-framework COMPILE_FLAGS -mavx2)
-        append_target_property(mmseqs-framework LINK_FLAGS -mavx2)
+if (NOT DISABLE_IPS4O)
+    find_package(Atomic)
+    if (ATOMIC_FOUND)
+        target_link_libraries(mmseqs-framework ${ATOMIC_LIBRARIES})
+        target_compile_definitions(mmseqs-framework PUBLIC -DENABLE_IPS4O=1)
+        message("-- IPS4O sorting works")
     else ()
-        append_target_property(mmseqs-framework COMPILE_FLAGS -mavx2 -Wa,-q)
-        append_target_property(mmseqs-framework LINK_FLAGS -mavx2 -Wa,-q)
+        message("-- OMPTL sorting fallback")
     endif ()
-elseif (HAVE_SSE4_1)
-    target_compile_definitions(mmseqs-framework PUBLIC -DSSE=1)
-    append_target_property(mmseqs-framework COMPILE_FLAGS -msse4.1)
-    append_target_property(mmseqs-framework LINK_FLAGS -msse4.1)
-elseif (HAVE_NEON)
-    target_compile_definitions(mmseqs-framework PUBLIC -DSSE=1 -DNEON=1)
 else ()
-    include(CheckSSEFeatures)
-    append_target_property(mmseqs-framework COMPILE_FLAGS ${SSE_FLAGS})
-    append_target_property(mmseqs-framework LINK_FLAGS ${SSE_FLAGS})
-    if (HAVE_AVX2_EXTENSIONS)
-        target_compile_definitions(mmseqs-framework PUBLIC -DAVX2=1)
-        # debugging
-        #   list(APPEND MMSEQS_DEFINITIONS -DSSE=1)
-    else ()
-        if (HAVE_SSE4_1_EXTENSIONS)
-            target_compile_definitions(mmseqs-framework PUBLIC -DSSE=1)
-        else ()
-            message(FATAL_ERROR "At least SSE4.2 is needed to compile!")
-        endif (HAVE_SSE4_1_EXTENSIONS)
-    endif (HAVE_AVX2_EXTENSIONS)
+    message("-- OMPTL sorting fallback")
 endif ()
 
-# tinyexpr
-target_link_libraries(mmseqs-framework tinyexpr)
+target_link_libraries(mmseqs-framework tinyexpr ${ZSTD_LIBRARIES} microtar)
+if (CYGWIN)
+    target_link_libraries(mmseqs-framework nedmalloc)
+endif ()
 
+if (EMSCRIPTEN)
+    target_compile_definitions(mmseqs-framework PUBLIC -DHAVE_ZLIB=1 -DHAVE_BZLIB=1)
+    append_target_property(mmseqs-framework COMPILE_FLAGS -s USE_ZLIB=1 -s USE_BZIP2=1)
+    append_target_property(mmseqs-framework LINK_FLAGS -s USE_ZLIB=1 -s USE_BZIP2=1)
+else ()
 find_package(ZLIB QUIET)
 if (ZLIB_FOUND)
     message("-- Found ZLIB")
@@ -162,7 +149,7 @@ if (ZLIB_FOUND)
     set(CMAKE_REQUIRED_FLAGS -lz)
     set(CMAKE_REQUIRED_INCLUDES ${ZLIB_INCLUDE_DIRS})
     set(CMAKE_REQUIRED_LIBRARIES ${ZLIB_LIBRARIES})
-    check_cxx_source_runs("
+    check_cxx_source_compiles("
         #include <zlib.h>
         int main() { gzFile file; return 0; }"
         HAVE_ZLIB_CHECK)
@@ -190,7 +177,7 @@ if (BZIP2_FOUND)
     set(CMAKE_REQUIRED_FLAGS -lbz2)
     set(CMAKE_REQUIRED_INCLUDES ${BZIP_INCLUDE_DIRS})
     set(CMAKE_REQUIRED_LIBRARIES ${BZIP2_LIBRARIES})
-    check_cxx_source_runs("
+    check_cxx_source_compiles("
         #include <bzlib.h>
         int main() { bz_stream stream; return 0; }"
         HAVE_BZLIB_CHECK)
@@ -207,6 +194,7 @@ if (BZIP2_FOUND)
     endif()
 else ()
     message("-- Could not find BZLIB")
+endif ()
 endif ()
 
 # MPI
@@ -256,10 +244,10 @@ if (NOT FRAMEWORK_ONLY)
     add_subdirectory(version)
     set(mmseqs_source_files mmseqs.cpp)
 
-    add_executable(mmseqs ${mmseqs_source_files})
-    mmseqs_setup_derived_target(mmseqs)
-    target_link_libraries(mmseqs version)
-    install(TARGETS mmseqs DESTINATION bin)
+    add_executable(mmseqs${EXE_SUFFIX} ${mmseqs_source_files})
+    mmseqs_setup_derived_target(mmseqs${EXE_SUFFIX})
+    target_link_libraries(mmseqs${EXE_SUFFIX} version)
+    install(TARGETS mmseqs${EXE_SUFFIX} DESTINATION bin)
 
     if (HAVE_TESTS)
         add_subdirectory(test)

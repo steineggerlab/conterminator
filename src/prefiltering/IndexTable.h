@@ -2,7 +2,7 @@
 #define INDEX_TABLE_H
 
 //
-// Written by Martin Steinegger martin.steinegger@mpibpc.mpg.de and Maria Hauser mhauser@genzentrum.lmu.de
+// Written by Martin Steinegger martin.steinegger@snu.ac.kr and Maria Hauser mhauser@genzentrum.lmu.de
 //
 // Abstract: Index table stores the list of DB sequences containing a certain k-mer, for each k-mer.
 //
@@ -16,7 +16,8 @@
 #include "MathUtil.h"
 #include "KmerGenerator.h"
 #include "Parameters.h"
-
+#include "FastSort.h"
+#include <stdlib.h>
 #include <algorithm>
 
 // IndexEntryLocal is an entry with position and seqId for a kmer
@@ -108,7 +109,7 @@ public:
             }
         }
         if(seqKmerPosBuffer.size() > 1){
-            std::sort(seqKmerPosBuffer.begin(), seqKmerPosBuffer.end());
+            SORT_SERIAL(seqKmerPosBuffer.begin(), seqKmerPosBuffer.end());
         }
         size_t countUniqKmer = 0;
         unsigned int prevKmerIdx = UINT_MAX;
@@ -132,17 +133,10 @@ public:
         size_t countKmer = 0;
         bool removeX = (Parameters::isEqualDbtype(s->getSequenceType(), Parameters::DBTYPE_NUCLEOTIDES) ||
                         Parameters::isEqualDbtype(s->getSequenceType(), Parameters::DBTYPE_AMINO_ACIDS));
-        const unsigned char xIndex = s->subMat->aa2num[static_cast<int>('X')];
         while(s->hasNextKmer()){
             const unsigned char * kmer = s->nextKmer();
-            if(removeX){
-                int xCount = 0;
-                for(int pos = 0; pos < kmerSize; pos++){
-                    xCount += (kmer[pos] == xIndex);
-                }
-                if(xCount > 0){
-                    continue;
-                }
+            if(removeX && s->kmerContainsX()){
+                continue;
             }
             if(threshold > 0){
                 int score = 0;
@@ -158,7 +152,7 @@ public:
             countKmer++;
         }
         if(countKmer > 1){
-            std::sort(seqKmerPosBuffer, seqKmerPosBuffer + countKmer);
+            SORT_SERIAL(seqKmerPosBuffer, seqKmerPosBuffer + countKmer);
         }
         size_t countUniqKmer = 0;
         unsigned int prevKmerIdx = UINT_MAX;
@@ -187,7 +181,7 @@ public:
         for (size_t i = 0; i < tableSize; i++) {
             size_t entrySize;
             IndexEntryLocal *entries = getDBSeqList(i, &entrySize);
-            std::sort(entries, entries + entrySize, IndexEntryLocal::comapreByIdAndPos);
+            SORT_SERIAL(entries, entries + entrySize, IndexEntryLocal::comapreByIdAndPos);
         }
     }
 
@@ -301,8 +295,7 @@ public:
 
     // FUNCTIONS TO OVERWRITE
     // add k-mers of the sequence to the index table
-    void addSimilarSequence(Sequence* s, KmerGenerator* kmerGenerator, Indexer * idxer) {
-        std::vector<IndexEntryLocalTmp> buffer;
+    void addSimilarSequence(Sequence* s, KmerGenerator* kmerGenerator, IndexEntryLocalTmp ** buffer, size_t &bufferSize, Indexer * idxer) {
         // iterate over all k-mers of the sequence and add the id of s to the sequence list of the k-mer (tableDummy)
         s->resetCurrPos();
         idxer->reset();
@@ -310,28 +303,35 @@ public:
         while(s->hasNextKmer()){
             const unsigned char * kmer = s->nextKmer();
             std::pair<size_t *, size_t> scoreMatrix = kmerGenerator->generateKmerList(kmer);
+            if(kmerPos+scoreMatrix.second >= bufferSize){
+                *buffer = static_cast<IndexEntryLocalTmp*>(realloc(*buffer, sizeof(IndexEntryLocalTmp) * bufferSize*2));
+                bufferSize = bufferSize*2;
+            }
             for(size_t i = 0; i < scoreMatrix.second; i++) {
                 unsigned int kmerIdx = scoreMatrix.first[i];
 
                 // if region got masked do not add kmer
                 if (offsets[kmerIdx + 1] - offsets[kmerIdx] == 0)
                     continue;
-                buffer.push_back(IndexEntryLocalTmp(kmerIdx,s->getId(), s->getCurrentPosition()));
+                (*buffer)[kmerPos].kmer = kmerIdx;
+                (*buffer)[kmerPos].seqId = s->getId();
+                (*buffer)[kmerPos].position_j = s->getCurrentPosition();
                 kmerPos++;
             }
+
         }
 
         if(kmerPos>1){
-            std::sort(buffer.begin(), buffer.end(), IndexEntryLocalTmp::comapreByIdAndPos);
+            SORT_SERIAL(*buffer, *buffer+kmerPos, IndexEntryLocalTmp::comapreByIdAndPos);
         }
         unsigned int prevKmer = UINT_MAX;
-        for(size_t pos = 0; pos < buffer.size(); pos++){
-            unsigned int kmerIdx = buffer[pos].kmer;
+        for(size_t pos = 0; pos < kmerPos; pos++){
+            unsigned int kmerIdx = (*buffer)[pos].kmer;
             if(kmerIdx != prevKmer){
                 size_t offset = __sync_fetch_and_add(&(offsets[kmerIdx]), 1);
                 IndexEntryLocal *entry = &entries[offset];
-                entry->seqId      = buffer[pos].seqId;
-                entry->position_j = buffer[pos].position_j;
+                entry->seqId      = (*buffer)[pos].seqId;
+                entry->position_j = (*buffer)[pos].position_j;
             }
             prevKmer = kmerIdx;
         }
@@ -339,7 +339,7 @@ public:
 
     // add k-mers of the sequence to the index table
     void addSequence (Sequence* s, Indexer * idxer,
-                      IndexEntryLocalTmp * buffer,
+                      IndexEntryLocalTmp ** buffer, size_t bufferSize,
                       int threshold, char * diagonalScore){
         // iterate over all k-mers of the sequence and add the id of s to the sequence list of the k-mer (tableDummy)
         s->resetCurrPos();
@@ -347,17 +347,10 @@ public:
         size_t kmerPos = 0;
         bool removeX = (Parameters::isEqualDbtype(s->getSequenceType(), Parameters::DBTYPE_NUCLEOTIDES) ||
                         Parameters::isEqualDbtype(s->getSequenceType(), Parameters::DBTYPE_AMINO_ACIDS));
-        const unsigned char xIndex = s->subMat->aa2num[static_cast<int>('X')];
         while (s->hasNextKmer()){
             const unsigned char * kmer = s->nextKmer();
-            if(removeX){
-                int xCount = 0;
-                for(int pos = 0; pos < kmerSize; pos++){
-                    xCount += (kmer[pos] == xIndex);
-                }
-                if(xCount > 0){
-                    continue;
-                }
+            if(removeX && s->kmerContainsX()){
+                continue;
             }
             if(threshold > 0) {
                 int score = 0;
@@ -373,24 +366,28 @@ public:
             if (offsets[kmerIdx + 1] - offsets[kmerIdx] == 0)
                 continue;
 
-            buffer[kmerPos].kmer = kmerIdx;
-            buffer[kmerPos].seqId      = s->getId();
-            buffer[kmerPos].position_j = s->getCurrentPosition();
+            (*buffer)[kmerPos].kmer = kmerIdx;
+            (*buffer)[kmerPos].seqId      = s->getId();
+            (*buffer)[kmerPos].position_j = s->getCurrentPosition();
             kmerPos++;
+            if(kmerPos >= bufferSize){
+                *buffer = static_cast<IndexEntryLocalTmp*>(realloc(*buffer, sizeof(IndexEntryLocalTmp) * bufferSize*2));
+                bufferSize = bufferSize*2;
+            }
         }
 
         if(kmerPos>1){
-            std::sort(buffer, buffer+kmerPos, IndexEntryLocalTmp::comapreByIdAndPos);
+            SORT_SERIAL(*buffer, *buffer+kmerPos, IndexEntryLocalTmp::comapreByIdAndPos);
         }
 
         unsigned int prevKmer = UINT_MAX;
         for(size_t pos = 0; pos < kmerPos; pos++){
-            unsigned int kmerIdx = buffer[pos].kmer;
+            unsigned int kmerIdx = (*buffer)[pos].kmer;
             if(kmerIdx != prevKmer){
                 size_t offset = __sync_fetch_and_add(&(offsets[kmerIdx]), 1);
                 IndexEntryLocal *entry = &entries[offset];
-                entry->seqId      = buffer[pos].seqId;
-                entry->position_j = buffer[pos].position_j;
+                entry->seqId      = (*buffer)[pos].seqId;
+                entry->position_j = (*buffer)[pos].position_j;
             }
             prevKmer = kmerIdx;
         }
@@ -405,7 +402,7 @@ public:
 
                 Debug(Debug::INFO) << "\n";
                 IndexEntryLocal *e = &entries[offsets[i]];
-                for (unsigned int j = 0; j < entrySize; j++) {
+                for (ptrdiff_t j = 0; j < entrySize; j++) {
                     Debug(Debug::INFO) << "\t(" << e[j].seqId << ", " << e[j].position_j << ")\n";
                 }
             }

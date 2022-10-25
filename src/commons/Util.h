@@ -47,23 +47,27 @@ template<> std::string SSTR(float);
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 
-#ifndef __has_builtin
-#define __has_builtin(x) 0
-#endif
-
-#if defined(__GNUC__) || __has_builtin(__builtin_expect)
-#define LIKELY(x) __builtin_expect((x),1)
-#define UNLIKELY(x) __builtin_expect((x),0)
+#if defined(__has_builtin)
+#  define HAS_BUILTIN(x) __has_builtin(x)
 #else
-#define LIKELY(x) (x)
-#define UNLIKELY(x) (x)
+#  define HAS_BUILTIN(x) (0)
 #endif
 
-#ifndef __has_attribute
-#define __has_attribute(x) 0
+#if HAS_BUILTIN(__builtin_expect)
+#  define LIKELY(x) __builtin_expect((x),1)
+#  define UNLIKELY(x) __builtin_expect((x),0)
+#else
+#  define LIKELY(x) (x)
+#  define UNLIKELY(x) (x)
 #endif
 
-#if defined(__GNUC__) || __has_attribute(unused)
+#if defined(__has_attribute)
+#  define HAS_ATTRIBUTE(x) __has_attribute(x)
+#else
+#  define HAS_ATTRIBUTE(x) (0)
+#endif
+
+#if HAS_ATTRIBUTE(__unused__)
 #  define MAYBE_UNUSED(x) x __attribute__((__unused__))
 #else
 #  define MAYBE_UNUSED(x) x
@@ -75,8 +79,6 @@ public:
                                 size_t world_size, size_t *subdomain_start,
                                 size_t *subdomain_size);
 
-    static void rankedDescSort8(short *val, unsigned int *index);
-    static void rankedDescSort32(short *val, unsigned int *index);
     static void rankedDescSort20(short *val, unsigned int *index);
 
     static size_t getTotalSystemMemory();
@@ -164,9 +166,17 @@ public:
 
     static bool getLine(const char* data, size_t dataLength, char* buffer, size_t bufferLength);
 
-    static inline size_t skipWhitespace(const char* data){
+    static inline size_t skipWhitespace(const char* data) {
         size_t counter = 0;
-        while((data[counter] == ' ' || data[counter] == '\t') == true) {
+        while ((data[counter] == ' ' || data[counter] == '\t') == true) {
+            counter++;
+        }
+        return counter;
+    }
+
+    static inline size_t skipTab(const char* data) {
+        size_t counter = 0;
+        while (data[counter] == '\t') {
             counter++;
         }
         return counter;
@@ -196,6 +206,14 @@ public:
         //A value different from zero (i.e., true) if indeed c is a white-space character. Zero (i.e., false) otherwise.
         size_t counter = 0;
         while((data[counter] == ' '  || data[counter] == '\t' || data[counter] == '\n' || data[counter] == '\0') == false) {
+            counter++;
+        }
+        return counter;
+    }
+
+    static inline size_t skipNonTab(const char * data) {
+        size_t counter = 0;
+        while (data[counter] != '\t' && data[counter] != '\n' && data[counter] != '\0') {
             counter++;
         }
         return counter;
@@ -236,6 +254,22 @@ public:
             data += skipNoneWhitespace(data);
         }
         if(elementCounter < maxElement)
+            words[elementCounter] = data;
+
+        return elementCounter;
+    }
+
+    static inline size_t getFieldsOfLine(const char* data, const char** words, size_t maxElement) {
+        size_t elementCounter = 0;
+        while (*data != '\n' && *data != '\0') {
+            data += skipTab(data);
+            words[elementCounter] = data;
+            elementCounter++;
+            if (elementCounter >= maxElement)
+                return elementCounter;
+            data += skipNonTab(data);
+        }
+        if (elementCounter < maxElement)
             words[elementCounter] = data;
 
         return elementCounter;
@@ -328,5 +362,7 @@ public:
     static bool hasAlignmentLength(int alnLenThr, int alnLen) {
         return alnLen >= alnLenThr;
     }
+
+    static size_t computeMemory(size_t limit);
 };
 #endif

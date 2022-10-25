@@ -24,9 +24,10 @@ public:
     static const unsigned int SCORE_ONLY = 0;
     static const unsigned int SCORE_COV = 1;
     static const unsigned int SCORE_COV_SEQID = 2;
-    const static int ALN_RES_WITH_OUT_BT_COL_CNT = 10;
-
+    const static int ALN_RES_WITHOUT_BT_COL_CNT = 10;
     const static int ALN_RES_WITH_BT_COL_CNT = 11;
+    const static int ALN_RES_WITH_ORF_POS_WITHOUT_BT_COL_CNT = 14;
+    const static int ALN_RES_WITH_ORF_AND_BT_COL_CNT = 15;
 
     struct result_t {
         unsigned int dbKey;
@@ -42,7 +43,33 @@ public:
         int dbStartPos;
         int dbEndPos;
         unsigned int dbLen;
+        int queryOrfStartPos;
+        int queryOrfEndPos;
+        int dbOrfStartPos;
+        int dbOrfEndPos;
         std::string backtrace;
+        result_t(unsigned int dbkey,int score,
+                 float qcov, float dbcov,
+                 float seqId, double eval,
+                 unsigned int alnLength,
+                 int qStartPos,
+                 int qEndPos,
+                 unsigned int qLen,
+                 int dbStartPos,
+                 int dbEndPos,
+                 unsigned int dbLen,
+                 int queryOrfStartPos,
+                 int queryOrfEndPos,
+                 int dbOrfStartPos,
+                 int dbOrfEndPos,
+                 std::string backtrace) : dbKey(dbkey), score(score), qcov(qcov),
+                                          dbcov(dbcov), seqId(seqId), eval(eval), alnLength(alnLength),
+                                          qStartPos(qStartPos), qEndPos(qEndPos), qLen(qLen),
+                                          dbStartPos(dbStartPos), dbEndPos(dbEndPos), dbLen(dbLen),
+                                          queryOrfStartPos(queryOrfStartPos), queryOrfEndPos(queryOrfEndPos),
+                                          dbOrfStartPos(dbOrfStartPos), dbOrfEndPos(dbOrfEndPos),
+                                          backtrace(backtrace) {};
+
         result_t(unsigned int dbkey,int score,
                  float qcov, float dbcov,
                  float seqId, double eval,
@@ -57,8 +84,10 @@ public:
                                           dbcov(dbcov), seqId(seqId), eval(eval), alnLength(alnLength),
                                           qStartPos(qStartPos), qEndPos(qEndPos), qLen(qLen),
                                           dbStartPos(dbStartPos), dbEndPos(dbEndPos), dbLen(dbLen),
+                                          queryOrfStartPos(-1), queryOrfEndPos(-1),
+                                          dbOrfStartPos(-1), dbOrfEndPos(-1),
                                           backtrace(backtrace) {};
-        
+
         result_t(){};
 
         static void swapResult(result_t & res, EvalueComputation &evaluer, bool hasBacktrace){
@@ -113,9 +142,10 @@ public:
         }
     };
 
-    Matcher(int querySeqType, int maxSeqLen, BaseMatrix *m,
-            EvalueComputation * evaluer, bool aaBiasCorrection,
-            int gapOpen, int gapExtend);
+    Matcher(int querySeqType, int targetSeqType, int maxSeqLen, BaseMatrix *m,
+            EvalueComputation * evaluer, bool aaBiasCorrection, float aaBiasCorrectionScale,
+            int gapOpen, int gapExtend, float correlationScoreWeight,
+            int zdrop);
 
     ~Matcher();
 
@@ -124,71 +154,52 @@ public:
                          unsigned int alignmentMode, unsigned int seqIdMode, bool isIdentical, bool wrappedScoring=false);
 
     // need for sorting the results
-    static bool compareHits (const result_t &first, const result_t &second){
-        //return (first.eval < second.eval);
-        if(first.eval < second.eval )
-            return true;
-        if(second.eval < first.eval )
-            return false;
-        if(first.score > second.score )
-            return true;
-        if(second.score > first.score )
-            return false;
-        if(first.dbLen < second.dbLen )
-            return true;
-        if(second.dbLen < first.dbLen )
-            return false;
-        if(first.dbKey < second.dbKey )
-            return true;
-        if(second.dbKey < first.dbKey )
-            return false;
-        return false;
+    static bool compareHits(const result_t &first, const result_t &second) {
+        if (first.eval != second.eval) {
+            return first.eval < second.eval;
+        }
+        if (first.score != second.score) {
+            return first.score > second.score;
+        }
+        if (first.dbLen != second.dbLen) {
+            return first.dbLen < second.dbLen;
+        }
+        return first.dbKey < second.dbKey;
     }
-    static bool compareHitByPos(const result_t &first, const result_t &second){
 
-        int firstQStartPos  = std::min( first.qStartPos, first.qEndPos);
-        int secondQStartPos = std::min( second.qStartPos, second.qEndPos);
-        if(secondQStartPos < firstQStartPos )
-            return false;
-        if(firstQStartPos < secondQStartPos)
-            return true;
-        return false;
-
+    static bool compareHitByPos(const result_t &first, const result_t &second) {
+        int firstQStartPos  = std::min(first.qStartPos, first.qEndPos);
+        int secondQStartPos = std::min(second.qStartPos, second.qEndPos);
+        return firstQStartPos < secondQStartPos;
     }
+
     // need for sorting the results
-    static bool compareHitsByPosAndStrand (const result_t &first, const result_t &second){
-        //return (first.eval < second.eval);
-        if(second.dbKey < first.dbKey)
-            return false;
-        if(first.dbKey < second.dbKey)
-            return true;
+    static bool compareHitsByPosAndStrand(const result_t &first, const result_t &second) {
+        if (first.dbKey != second.dbKey) {
+            return first.dbKey < second.dbKey;
+        }
         bool qFirstRev = (first.qStartPos > first.qEndPos);
         bool qSecondRev = (second.qStartPos > second.qEndPos);
-        if(qSecondRev < qFirstRev)
+        if (qSecondRev < qFirstRev)
             return false;
-        if(qFirstRev < qSecondRev)
+        if (qFirstRev < qSecondRev)
             return true;
         bool dbFirstRev = (first.dbStartPos > first.dbEndPos);
         bool dbSecondRev = (second.dbStartPos > second.dbEndPos);
-        if(dbSecondRev < dbFirstRev)
+        if (dbSecondRev < dbFirstRev)
             return false;
-        if(dbFirstRev < dbSecondRev)
+        if (dbFirstRev < dbSecondRev)
             return true;
-        int firstQStartPos  = std::min( first.qStartPos, first.qEndPos);
-        int secondQStartPos = std::min( second.qStartPos, second.qEndPos);
-        int firstDbStart    = std::min( first.dbStartPos, first.dbEndPos);
-        int secondDbStart   = std::min( second.dbStartPos, second.dbEndPos);
+        int firstQStartPos  = std::min(first.qStartPos, first.qEndPos);
+        int secondQStartPos = std::min(second.qStartPos, second.qEndPos);
+        int firstDbStart    = std::min(first.dbStartPos, first.dbEndPos);
+        int secondDbStart   = std::min(second.dbStartPos, second.dbEndPos);
         int firstDiagonal  = firstQStartPos - firstDbStart;
         int secondDiagonal = secondQStartPos - secondDbStart;
-        if(secondDiagonal < firstDiagonal)
-            return false;
-        if(firstDiagonal < secondDiagonal)
-            return true;
-        if(secondDbStart < firstDbStart )
-            return false;
-        if(firstDbStart < secondDbStart)
-            return true;
-        return false;
+        if (firstDiagonal != secondDiagonal) {
+            return firstDiagonal < secondDiagonal;
+        }
+        return firstDbStart < secondDbStart;
     }
 
     // map new query into memory (create queryProfile, ...)
@@ -205,10 +216,12 @@ public:
     static std::string uncompressAlignment(const std::string &cbt);
 
 
-    static size_t resultToBuffer(char * buffer, const result_t &result, bool addBacktrace, bool compress  = true);
+    static size_t resultToBuffer(char * buffer, const result_t &result, bool addBacktrace, bool compress  = true, bool addOrfPosition = false);
 
     static int computeAlnLength(int anEnd, int start, int dbEnd, int dbStart);
 
+    static void updateResultByRescoringBacktrace(const char *querySeq, const char *targetSeq, const char **subMat, EvalueComputation &evaluer,
+                                                    int gapOpen, int gapExtend, result_t &result);
 
 private:
 
@@ -216,6 +229,9 @@ private:
     int gapOpen;
     // costs to extend a gap
     int gapExtend;
+
+    // weight for the correlation score, if set to 0.0 it is turned off
+    float correlationScoreWeight;
 
     // holds values of the current active query
     Sequence * currentQuery;
@@ -232,7 +248,6 @@ private:
     int8_t * tinySubMat;
     // set substituion matrix
     void setSubstitutionMatrix(BaseMatrix *m);
-
 };
 
 #endif

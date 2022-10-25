@@ -15,6 +15,7 @@ void setEasyClusterDefaults(Parameters *p) {
     p->covThr = 0.8;
     p->evalThr = 0.001;
     p->createdbMode = Parameters::SEQUENCE_SPLIT_MODE_SOFT;
+    p->writeLookup = false;
     p->alignmentMode = Parameters::ALIGNMENT_MODE_SCORE_COV_SEQID;
     p->maxResListLen = 20;
 }
@@ -29,28 +30,29 @@ void setEasyClusterMustPassAlong(Parameters *p) {
 
 int easycluster(int argc, const char **argv, const Command &command) {
     Parameters &par = Parameters::getInstance();
-    par.overrideParameterDescription((Command &)command, par.PARAM_ADD_BACKTRACE.uniqid, NULL, NULL, par.PARAM_ADD_BACKTRACE.category | MMseqsParameter::COMMAND_EXPERT);
-    par.overrideParameterDescription((Command &)command, par.PARAM_ALT_ALIGNMENT.uniqid, NULL, NULL, par.PARAM_ALT_ALIGNMENT.category | MMseqsParameter::COMMAND_EXPERT);
-    par.overrideParameterDescription((Command &)command, par.PARAM_RESCORE_MODE.uniqid, NULL, NULL, par.PARAM_RESCORE_MODE.category | MMseqsParameter::COMMAND_EXPERT);
-    par.overrideParameterDescription((Command &)command, par.PARAM_MAX_REJECTED.uniqid, NULL, NULL, par.PARAM_MAX_REJECTED.category | MMseqsParameter::COMMAND_EXPERT);
-    par.overrideParameterDescription((Command &)command, par.PARAM_MAX_ACCEPT.uniqid, NULL, NULL, par.PARAM_MAX_ACCEPT.category | MMseqsParameter::COMMAND_EXPERT);
-    par.overrideParameterDescription((Command &)command, par.PARAM_KMER_PER_SEQ.uniqid, NULL, NULL, par.PARAM_KMER_PER_SEQ.category | MMseqsParameter::COMMAND_EXPERT);
-    par.overrideParameterDescription((Command &)command, par.PARAM_S.uniqid, "Sensitivity will be automatically determined but can be adjusted", NULL, par.PARAM_S.category |MMseqsParameter::COMMAND_EXPERT);
-    par.overrideParameterDescription((Command &)command, par.PARAM_INCLUDE_ONLY_EXTENDABLE.uniqid, NULL, NULL, par.PARAM_INCLUDE_ONLY_EXTENDABLE.category | MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_MAX_SEQS.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_ADD_BACKTRACE.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_ALT_ALIGNMENT.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_ZDROP.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_RESCORE_MODE.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_MAX_REJECTED.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_MAX_ACCEPT.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_KMER_PER_SEQ.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_S.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_INCLUDE_ONLY_EXTENDABLE.addCategory(MMseqsParameter::COMMAND_EXPERT);
     for (size_t i = 0; i < par.createdb.size(); i++){
-        par.overrideParameterDescription((Command &)command, par.createdb[i]->uniqid, NULL, NULL, par.createdb[i]->category | MMseqsParameter::COMMAND_EXPERT);
+        par.createdb[i]->addCategory(MMseqsParameter::COMMAND_EXPERT);
     }
-    par.overrideParameterDescription((Command &) command, par.PARAM_THREADS.uniqid, NULL, NULL,
-                                     par.PARAM_THREADS.category & ~MMseqsParameter::COMMAND_EXPERT);
-    par.overrideParameterDescription((Command &) command, par.PARAM_V.uniqid, NULL, NULL,
-                                     par.PARAM_V.category & ~MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_COMPRESSED.removeCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_THREADS.removeCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_V.removeCategory(MMseqsParameter::COMMAND_EXPERT);
 
     setEasyClusterDefaults(&par);
     par.parseParameters(argc, argv, command, true, Parameters::PARSE_VARIADIC, 0);
     setEasyClusterMustPassAlong(&par);
 
     std::string tmpDir = par.filenames.back();
-    std::string hash = SSTR(par.hashParameter(par.filenames, *command.params));
+    std::string hash = SSTR(par.hashParameter(command.databases, par.filenames, *command.params));
     if (par.reuseLatest) {
         hash = FileUtil::getHashFromSymLink(tmpDir + "/latest");
     }
@@ -67,6 +69,7 @@ int easycluster(int argc, const char **argv, const Command &command) {
     cmd.addVariable("CREATEDB_PAR", par.createParameterString(par.createdb).c_str());
     cmd.addVariable("CLUSTER_PAR", par.createParameterString(par.clusterworkflow, true).c_str());
     cmd.addVariable("CLUSTER_MODULE", "cluster");
+    cmd.addVariable("RESULT2REPSEQ_PAR", par.createParameterString(par.result2repseq).c_str());
     cmd.addVariable("THREADS_PAR", par.createParameterString(par.onlythreads).c_str());
     cmd.addVariable("VERBOSITY_PAR", par.createParameterString(par.onlyverbosity).c_str());
 

@@ -5,10 +5,11 @@
 #include "Debug.h"
 #include "FileUtil.h"
 #include "ExpressionParser.h"
-
+#include "FastSort.h"
 #include <fstream>
+#include <random>
+#include <iostream>
 
-#include <omptl/omptl_algorithm>
 #include <regex.h>
 
 #ifdef OPENMP
@@ -110,9 +111,10 @@ int filterdb(int argc, const char **argv, const Command &command) {
 
     // REGEX_FILTERING
     regex_t regex;
-
+    std::random_device rng;
+    std::mt19937 urng(rng());
     int mode;
-    if (par.sortEntries == true) {
+    if (par.sortEntries != 0) {
         mode = SORT_ENTRIES;
         Debug(Debug::INFO) << "Filtering by sorting entries\n";
     } else if (par.filteringFile.empty() == false) {
@@ -128,27 +130,50 @@ int filterdb(int argc, const char **argv, const Command &command) {
             Debug(Debug::ERROR) << "File " << par.filteringFile << " does not exist\n";
             EXIT(EXIT_FAILURE);
         }
-        char *line = NULL;
-        size_t len = 0;
         char key[65536];
         for (size_t i = 0; i < filenames.size(); i++) {
             FILE * orderFile = fopen(filenames[i].c_str(), "r");
-            while (getline(&line, &len, orderFile) != -1) {
-                size_t offset = 0;
-                // ignore \0 in data files to support datafiles as input
-                while (offset < len && line[offset] == '\0') {
-                    offset++;
+            int c;
+            size_t offset = 0;
+            bool inKey = true;
+            // parse first column in each line without tripping over additional null bytes
+            // as we allow database data files as input
+            while ((c = fgetc(orderFile)) != EOF) {
+                if (c == '\n') {
+                    if (offset > 0) {
+                        key[offset] = '\0';
+                        offset = 0;
+                        filter.emplace_back(key);
+                    }
+                    inKey = true;
+                    continue;
                 }
-                if (offset >= len) {
-                    break;
+                if (c == ' ' || c == '\t') {
+                    inKey = false;
+                    continue;
                 }
-                Util::parseKey(line + offset, key);
+                if (c == '\0' || inKey == false) {
+                    continue;
+                }
+
+                key[offset] = c;
+                offset++;
+
+                if (offset == 65536) {
+                    Debug(Debug::ERROR) << "Input in file " << filenames[i] << " too long\n";
+                    EXIT(EXIT_FAILURE);
+                }
+            }
+            if (inKey == true && offset > 0) {
+                key[offset] = '\0';
                 filter.emplace_back(key);
             }
-            fclose(orderFile);
+            if (fclose(orderFile) != 0) {
+                Debug(Debug::ERROR) << "Cannot close file " << filenames[i] << "\n";
+                EXIT(EXIT_FAILURE);
+            }
         }
-        free(line);
-        omptl::sort(filter.begin(), filter.end());
+        SORT_PARALLEL(filter.begin(), filter.end());
         std::vector<std::string>::iterator last = std::unique(filter.begin(), filter.end());
         filter.erase(last, filter.end());
     } else if (par.mappingFile.empty() == false) {
@@ -304,6 +329,7 @@ int filterdb(int argc, const char **argv, const Command &command) {
                     for (size_t i = 0; i < bindableParserColumns.size(); ++i) {
                         size_t columnToBind = bindableParserColumns[i];
                         char *rest;
+                        errno = 0;
                         const double value = strtod(columnPointers[columnToBind], &rest);
                         if ((rest == columnPointers[columnToBind]) || errno == ERANGE) {
                             Debug(Debug::WARNING) << "Can not parse column " << columnToBind << "!\n";
@@ -319,8 +345,9 @@ int filterdb(int argc, const char **argv, const Command &command) {
                     size_t newId = helper->getId(static_cast<unsigned int>(strtoul(columnValue, NULL, 10)));
                     if (newId != UINT_MAX) {
                         size_t originalLength = strlen(lineBuffer);
-                        // Replace the last \n
-                        lineBuffer[originalLength - 1] = '\t';
+                        // Continue the string by replacing the null byte
+                        lineBuffer[originalLength] = '\t';
+                        originalLength++;
                         char *fullLine = helper->getData(newId, thread_idx);
                         if (columnToTake == -1) {
                             // either append the full line (default mode)
@@ -458,8 +485,7 @@ int filterdb(int argc, const char **argv, const Command &command) {
                 } else if (par.sortEntries == DECREASING) {
                     std::stable_sort(toSort.begin(), toSort.end(), compareFirstEntryDecreasing());
                 } else if (par.sortEntries == SHUFFLE) {
-                    srand(unsigned(time(0)));
-                    std::random_shuffle(toSort.begin(), toSort.end());
+                    std::shuffle(toSort.begin(), toSort.end(), urng);
                 }
 
                 for (size_t i = 0; i < toSort.size(); i++) {

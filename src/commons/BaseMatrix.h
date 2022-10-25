@@ -41,6 +41,9 @@ public:
     // background for any state
     static const double ANY_BACK;
 
+    // score bias for simpleGotoh
+    float scoreBias;
+
     // print the substitution matrix
     static void print(short** matrix, char* num2aa, int size);
 
@@ -52,7 +55,7 @@ public:
     static void generateSubMatrix(double ** probMatrix, double ** subMatrix, float ** subMatrixPseudoCounts, int size, bool containsX);
 
     // generate a short data type substitution matrix
-    static void generateSubMatrix(double ** probMatrix, float ** subMatrixPseudoCounts, short ** subMatrix, int size, bool containsX, double bitFactor = 1.0, double scoringBias = 0.0);
+    void generateSubMatrix(double ** probMatrix, float ** subMatrixPseudoCounts, short ** subMatrix, int size, bool containsX, double bitFactor = 1.0, double scoringBias = 0.0);
 
     virtual double getBackgroundProb(size_t aa_index);
 
@@ -70,9 +73,10 @@ public:
 
     static void computeBackground(double **probMat, double *pBack, int alphabetSize, bool containsX);
 
-    static size_t memorySize(BaseMatrix *pMatrix);
+    static size_t memorySize(std::string & matrixName , std::string & matrixData);
     static std::pair<std::string, std::string> unserialize(const char * data);
-    static char * serialize(BaseMatrix *pMatrix);
+    static char * serialize(std::string &matrixName, std::string &matrixData );
+    static std::string unserializeName(const char * data);
 };
 
 

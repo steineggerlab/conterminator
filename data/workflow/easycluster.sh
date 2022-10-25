@@ -29,7 +29,7 @@ fi
 
 if notExists "${TMP_PATH}/rep_seq.fasta"; then
     # shellcheck disable=SC2086
-    "$MMSEQS" result2repseq "${TMP_PATH}/input" "${TMP_PATH}/clu" "${TMP_PATH}/clu_rep" ${THREADS_PAR} \
+    "$MMSEQS" result2repseq "${TMP_PATH}/input" "${TMP_PATH}/clu" "${TMP_PATH}/clu_rep" ${RESULT2REPSEQ_PAR} \
             || fail "Result2repseq  died"
 
     # shellcheck disable=SC2086
@@ -52,12 +52,16 @@ mv "${TMP_PATH}/rep_seq.fasta"  "${RESULTS}_rep_seq.fasta"
 mv "${TMP_PATH}/cluster.tsv"  "${RESULTS}_cluster.tsv"
 
 if [ -n "${REMOVE_TMP}" ]; then
-    echo "Removing temporary files"
-    "$MMSEQS" rmdb "${TMP_PATH}/input"
-    "$MMSEQS" rmdb "${TMP_PATH}/input_h"
-    "$MMSEQS" rmdb "${TMP_PATH}/clu_seqs"
-    "$MMSEQS" rmdb "${TMP_PATH}/clu_rep"
-    "$MMSEQS" rmdb "${TMP_PATH}/clu"
+    # shellcheck disable=SC2086
+    "$MMSEQS" rmdb "${TMP_PATH}/input" ${VERBOSITY_PAR}
+    # shellcheck disable=SC2086
+    "$MMSEQS" rmdb "${TMP_PATH}/input_h" ${VERBOSITY_PAR}
+    # shellcheck disable=SC2086
+    "$MMSEQS" rmdb "${TMP_PATH}/clu_seqs" ${VERBOSITY_PAR}
+    # shellcheck disable=SC2086
+    "$MMSEQS" rmdb "${TMP_PATH}/clu_rep" ${VERBOSITY_PAR}
+    # shellcheck disable=SC2086
+    "$MMSEQS" rmdb "${TMP_PATH}/clu" ${VERBOSITY_PAR}
     rm -rf "${TMP_PATH}/clu_tmp"
     rm -f "${TMP_PATH}/easycluster.sh"
 fi

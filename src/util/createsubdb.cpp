@@ -23,7 +23,12 @@ int createsubdb(int argc, const char **argv, const Command& command) {
         }
     }
 
-    DBReader<unsigned int> reader(par.db2.c_str(), par.db2Index.c_str(), 1, DBReader<unsigned int>::USE_INDEX|DBReader<unsigned int>::USE_DATA);
+    const bool lookupMode = par.dbIdMode == Parameters::ID_MODE_LOOKUP;
+    int dbMode = DBReader<unsigned int>::USE_INDEX|DBReader<unsigned int>::USE_DATA;
+    if (lookupMode) {
+        dbMode |= DBReader<unsigned int>::USE_LOOKUP_REV;
+    }
+    DBReader<unsigned int> reader(par.db2.c_str(), par.db2Index.c_str(), 1, dbMode);
     reader.open(DBReader<unsigned int>::NOSORT);
     const bool isCompressed = reader.isCompressed();
 
@@ -33,9 +38,24 @@ int createsubdb(int argc, const char **argv, const Command& command) {
     char *line = NULL;
     size_t len = 0;
     char dbKey[256];
+    unsigned int prevKey = 0;
+    bool isOrdered = true;
     while (getline(&line, &len, orderFile) != -1) {
         Util::parseKey(line, dbKey);
-        const unsigned int key = Util::fast_atoi<unsigned int>(dbKey);
+        unsigned int key;
+        if (lookupMode) {
+            size_t lookupId = reader.getLookupIdByAccession(dbKey);
+            if (lookupId == SIZE_MAX) {
+                Debug(Debug::WARNING) << "Could not find name " << dbKey << " in lookup\n";
+                continue;
+            }
+            key = reader.getLookupKey(lookupId);
+        } else {
+            key = Util::fast_atoi<unsigned int>(dbKey);
+        }
+
+        isOrdered &= (prevKey <= key);
+        prevKey = key;
         const size_t id = reader.getId(key);
         if (id >= UINT_MAX) {
             Debug(Debug::WARNING) << "Key " << dbKey << " not found in database\n";
@@ -62,10 +82,8 @@ int createsubdb(int argc, const char **argv, const Command& command) {
     // merge any kind of sequence database
     const bool shouldMerge = Parameters::isEqualDbtype(reader.getDbtype(), Parameters::DBTYPE_HMM_PROFILE)
                              || Parameters::isEqualDbtype(reader.getDbtype(), Parameters::DBTYPE_AMINO_ACIDS)
-                             || Parameters::isEqualDbtype(reader.getDbtype(), Parameters::DBTYPE_NUCLEOTIDES)
-                             || Parameters::isEqualDbtype(reader.getDbtype(), Parameters::DBTYPE_PROFILE_STATE_PROFILE)
-                             || Parameters::isEqualDbtype(reader.getDbtype(), Parameters::DBTYPE_PROFILE_STATE_SEQ);
-    writer.close(shouldMerge);
+                             || Parameters::isEqualDbtype(reader.getDbtype(), Parameters::DBTYPE_NUCLEOTIDES);
+    writer.close(shouldMerge, !isOrdered);
     if (par.subDbMode == Parameters::SUBDB_MODE_SOFT) {
         DBReader<unsigned int>::softlinkDb(par.db2, par.db3, DBFiles::DATA);
     }
@@ -74,7 +92,10 @@ int createsubdb(int argc, const char **argv, const Command& command) {
 
     free(line);
     reader.close();
-    fclose(orderFile);
+    if (fclose(orderFile) != 0) {
+        Debug(Debug::ERROR) << "Cannot close file " << par.db1 << "\n";
+        return EXIT_FAILURE;
+    }
 
     return EXIT_SUCCESS;
 }

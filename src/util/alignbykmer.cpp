@@ -10,6 +10,7 @@
 #include "ReducedMatrix.h"
 #include "ExtendedSubstitutionMatrix.h"
 #include "IndexReader.h"
+#include "FastSort.h"
 #include <string>
 #include <vector>
 
@@ -41,6 +42,7 @@ int alignbykmer(int argc, const char **argv, const Command &command) {
         querySeqType = qdbr->getDbtype();
     }
 
+    int gapOpen, gapExtend;
     if(Parameters::isEqualDbtype(querySeqType, Parameters::DBTYPE_NUCLEOTIDES)){
         par.alphabetSize = 5;
         if(par.PARAM_SPACED_KMER_MODE.wasSet == false) {
@@ -49,18 +51,15 @@ int alignbykmer(int argc, const char **argv, const Command &command) {
         if(par.PARAM_K.wasSet == false) {
             par.kmerSize = 9;
         }
-        if(par.PARAM_GAP_OPEN.wasSet == false){
-            par.gapOpen = 5;
-        }
-        if(par.PARAM_GAP_EXTEND.wasSet == false) {
-            par.gapExtend = 2;
-        }
-
+        gapOpen = par.gapOpen.values.nucleotide();
+        gapExtend =  par.gapExtend.values.nucleotide();
     } else {
         if(par.PARAM_K.wasSet == false) {
             par.kmerSize = 4;
         }
         par.alphabetSize = 21;
+        gapOpen = par.gapOpen.values.aminoacid();
+        gapExtend = par.gapExtend.values.aminoacid();
     }
     par.printParameters(command.cmd, argc, argv, *command.params);
 
@@ -73,20 +72,20 @@ int alignbykmer(int argc, const char **argv, const Command &command) {
 
     BaseMatrix *subMat;
     if (Parameters::isEqualDbtype(querySeqType,Parameters::DBTYPE_NUCLEOTIDES)) {
-        subMat = new NucleotideMatrix(par.scoringMatrixFile.nucleotides, 1.0, 0.0);
+        subMat = new NucleotideMatrix(par.scoringMatrixFile.values.nucleotide().c_str(), 1.0, 0.0);
     } else {
-        if (par.alphabetSize == 21) {
-            subMat = new SubstitutionMatrix(par.scoringMatrixFile.aminoacids, 2.0, 0.0);
+        if (par.alphabetSize.values.aminoacid() == 21) {
+            subMat = new SubstitutionMatrix(par.scoringMatrixFile.values.aminoacid().c_str(), 2.0, 0.0);
         } else {
-            SubstitutionMatrix sMat(par.scoringMatrixFile.aminoacids, 2.0, 0.0);
+            SubstitutionMatrix sMat(par.scoringMatrixFile.values.aminoacid().c_str(), 2.0, 0.0);
             subMat = new ReducedMatrix(sMat.probMatrix, sMat.subMatrixPseudoCounts, sMat.aa2num, sMat.num2aa,
-                    sMat.alphabetSize, par.alphabetSize, 2.0);
+                    sMat.alphabetSize, par.alphabetSize.values.aminoacid(), 2.0);
             SubstitutionMatrix::print(subMat->subMatrix, subMat->num2aa, subMat->alphabetSize );
         }
     }
     ScoreMatrix _2merSubMatrix = ExtendedSubstitutionMatrix::calcScoreMatrix(*subMat, 2);
 
-    EvalueComputation evaluer(tdbr->getAminoAcidDBSize(), subMat, par.gapOpen, par.gapExtend);
+    EvalueComputation evaluer(tdbr->getAminoAcidDBSize(), subMat, gapOpen, gapExtend);
 
     DBWriter resultWriter(par.db4.c_str(), par.db4Index.c_str(), par.threads, par.compressed, Parameters::DBTYPE_ALIGNMENT_RES);
     resultWriter.open();
@@ -170,7 +169,7 @@ int alignbykmer(int argc, const char **argv, const Command &command) {
             Sequence target(par.maxSeqLen, targetSeqType, subMat, par.kmerSize, par.spacedKmer, false, true, par.spacedKmerPattern);
             KmerGenerator kmerGenerator(par.kmerSize, subMat->alphabetSize, 70.0);
             kmerGenerator.setDivideStrategy(NULL, &_2merSubMatrix);
-            size_t lookupSize = MathUtil::ipow<size_t>(par.alphabetSize, par.kmerSize);
+            size_t lookupSize = MathUtil::ipow<size_t>(subMat->alphabetSize, par.kmerSize);
             unsigned short * queryPosLookup = new unsigned short[lookupSize];
             memset(queryPosLookup, 255, lookupSize * sizeof(unsigned short) );
 
@@ -186,7 +185,7 @@ int alignbykmer(int argc, const char **argv, const Command &command) {
 #ifdef OPENMP
             thread_idx = (unsigned int) omp_get_thread_num();
 #endif
-            char buffer[1024 + 32768];
+            char buffer[1024 + 32768*4];
             char dbKeyBuffer[255 + 1];
 
 #pragma omp for schedule(dynamic, 1)
@@ -238,7 +237,7 @@ int alignbykmer(int argc, const char **argv, const Command &command) {
                     }
 
 
-                    std::sort(kmerPosVec, kmerPosVec + kmerPosSize, KmerPos::compareKmerPos);
+                    SORT_SERIAL(kmerPosVec, kmerPosVec + kmerPosSize, KmerPos::compareKmerPos);
                     unsigned short region_min_i = USHRT_MAX;
                     unsigned short region_max_i = 0;
                     unsigned short region_min_j = USHRT_MAX;
@@ -298,7 +297,7 @@ int alignbykmer(int argc, const char **argv, const Command &command) {
                         }
                     }
                     // Do dynamic programming
-                    std::sort(stretcheVec, stretcheVec + stretcheSize, Stretche::compareStretche);
+                    SORT_SERIAL(stretcheVec, stretcheVec + stretcheSize, Stretche::compareStretche);
                     for (size_t id = 0; id < stretcheSize; ++id) {
                         dpMatrixRow[id].prevPotentialId = id;
                         dpMatrixRow[id].pathScore = stretcheVec[id].kmerCnt;
@@ -311,7 +310,7 @@ int alignbykmer(int argc, const char **argv, const Command &command) {
                             if (stretcheVec[currStretche].i_start > stretcheVec[prevPotentialStretche].i_end &&
                                     stretcheVec[currStretche].j_start > stretcheVec[prevPotentialStretche].i_end) {
                                 int bestScorePathPrevIsLast = dpMatrixRow[prevPotentialStretche].pathScore;
-                                int distance =  par.gapOpen + (stretcheVec[prevPotentialStretche].i_end - stretcheVec[currStretche].i_start)*par.gapExtend;
+                                int distance =  gapOpen + (stretcheVec[prevPotentialStretche].i_end - stretcheVec[currStretche].i_start) * gapExtend;
                                 int costOfPrevToCurrTransition = distance;
                                 int currScore = stretcheVec[currStretche].kmerCnt*par.kmerSize*2;
                                 int currScoreWithPrev = bestScorePathPrevIsLast + costOfPrevToCurrTransition + currScore;
@@ -435,20 +434,20 @@ int alignbykmer(int argc, const char **argv, const Command &command) {
                             score += subMat->subMatrix[query.numSequence[i]][target.numSequence[j]];
                         }
                         if (stretch > 0) {
-                            score -= par.gapOpen;
+                            score -= gapOpen;
                             if (strechtPath[stretch-1].i_start==strechtPath[stretch].i_end) {
                                 for (size_t pos = strechtPath[stretch].j_end; pos < strechtPath[stretch-1].j_start; pos++) {
 //                                    querystr.push_back('-');
 //                                    targetstr.push_back(subMat->num2aa[target.sequence[pos]]);
                                     bt.push_back('I');
-                                    score -= par.gapExtend;
+                                    score -= gapExtend;
                                 }
                             } else {
                                 for (size_t pos = strechtPath[stretch].i_end; pos < strechtPath[stretch-1].i_start; pos++) {
 //                                    querystr.push_back(subMat->num2aa[query.sequence[pos]]);
 //                                    targetstr.push_back('-');
                                     bt.push_back('D');
-                                    score -= par.gapExtend;
+                                    score -= gapExtend;
                                 }
                             }
                         }

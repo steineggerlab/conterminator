@@ -3,12 +3,6 @@
 #include "Debug.h"
 #include "lambda_calculator.h"
 
-#include "blosum62.out.h"
-#include "PAM30.out.h"
-#include "VTML80.out.h"
-#include "VTML40.out.h"
-
-#include "nucleotide.out.h"
 
 #include <cstring>
 #include <algorithm>
@@ -18,22 +12,7 @@
 
 SubstitutionMatrix::SubstitutionMatrix(const char *filename, float bitFactor, float scoreBias) : bitFactor(bitFactor) {
     std::pair<std::string, std::string> parsedMatrix = BaseMatrix::unserialize(filename);
-    if (strcmp(parsedMatrix.first.c_str(), "nucleotide.out") == 0) {
-        matrixData = std::string((const char *)nucleotide_out, nucleotide_out_len);
-        matrixName = "nucleotide.out";
-    } else if (strcmp(parsedMatrix.first.c_str(), "blosum62.out") == 0) {
-        matrixData = std::string((const char *) blosum62_out, blosum62_out_len);
-        matrixName = "blosum62.out";
-    } else if (strcmp(parsedMatrix.first.c_str(), "VTML80.out") == 0) {
-        matrixData = std::string((const char *)VTML80_out, VTML80_out_len);
-        matrixName = "VTML80.out";
-    } else if (strcmp(parsedMatrix.first.c_str(), "VTML40.out") == 0) {
-        matrixData = std::string((const char *)VTML40_out, VTML40_out_len);
-        matrixName = "VTML40.out";
-    } else if (strcmp(parsedMatrix.first.c_str(), "PAM30.out") == 0) {
-        matrixData = std::string((const char *)PAM30_out, PAM30_out_len);
-        matrixName = "PAM30.out";
-    } else if(parsedMatrix.second != "") {
+    if(parsedMatrix.second != "") {
         // the filename can contain the substituion matrix
         // SUBMATNAME.out:DATA
         // this is used for index databases
@@ -43,7 +22,7 @@ SubstitutionMatrix::SubstitutionMatrix(const char *filename, float bitFactor, fl
         // read amino acid substitution matrix from file
         std::string fileName(parsedMatrix.first.c_str());
         matrixName = Util::base_name(fileName, "/\\");
-        if (fileName.substr(fileName.length() - 4, 4).compare(".out") != 0) {
+        if (fileName.length() < 4 || fileName.substr(fileName.length() - 4, 4).compare(".out") != 0) {
             Debug(Debug::ERROR) << "Invalid format of the substitution matrix input file! Only .out files are accepted.\n";
             EXIT(EXIT_FAILURE);
         }
@@ -64,8 +43,15 @@ SubstitutionMatrix::SubstitutionMatrix(const char *filename, float bitFactor, fl
     }
     initMatrixMemory(alphabetSize);
     readProbMatrix(matrixData, alphSizeAndX.second);
-
-    setupLetterMapping();
+    if(mappingHasAminoAcidLetters()){
+        setupLetterMapping();
+    }else {
+        for (int letter = 0; letter < UCHAR_MAX; letter++) {
+            char upperLetter = toupper(static_cast<char>(letter));
+            aa2num[letter] = (aa2num[static_cast<unsigned char>(upperLetter)] == UCHAR_MAX)
+                             ? alphabetSize-1 : aa2num[static_cast<int>(upperLetter)];
+        }
+    }
 
     //print(probMatrix, num2aa, alphabetSize);
     generateSubMatrix(probMatrix, subMatrixPseudoCounts, subMatrix, alphabetSize, true, bitFactor, scoreBias);
@@ -106,7 +92,8 @@ bool SubstitutionMatrix::estimateLambdaAndBackground(const double **scoreMatrix,
 void SubstitutionMatrix::calcLocalAaBiasCorrection(const BaseMatrix *m,
                                                    const unsigned char *int_sequence,
                                                    const int N,
-                                                   float *compositionBias) {
+                                                   float *compositionBias,
+                                                   float scale) {
     const int windowSize = 40;
     for (int i = 0; i < N; i++) {
         const int minPos = std::max(0, (i - windowSize / 2));
@@ -129,7 +116,7 @@ void SubstitutionMatrix::calcLocalAaBiasCorrection(const BaseMatrix *m,
         for (int a = 0; a < m->alphabetSize; a++) {
             deltaS_i += m->pBack[a] * static_cast<float>(subMat[a]);
         }
-        compositionBias[i] = deltaS_i;
+        compositionBias[i] = scale * deltaS_i;
 //        std::cout << i << " " << compositionBias[i] << std::endl;
     }
 }
@@ -228,14 +215,14 @@ void SubstitutionMatrix::calcProfileProfileLocalAaBiasCorrectionAln(int8_t *prof
  */
 
 void SubstitutionMatrix::calcGlobalAaBiasCorrection(const BaseMatrix *m,
-                                                    short *profileScores,
+                                                    char *profileScores,
                                                     float *pNullBuffer,
                                                     const size_t profileAASize,
                                                     const int N) {
     memset(pNullBuffer, 0, sizeof(float) * N);
     const int windowSize = 40;
     for (int pos = 0; pos < N; pos++) {
-        const short * subMat = profileScores + (pos * profileAASize);
+        const char * subMat = profileScores + (pos * profileAASize);
         for(size_t aa = 0; aa < 20; aa++) {
             pNullBuffer[pos] += m->pBack[aa] * static_cast<float>(subMat[aa]);
         }
@@ -251,7 +238,7 @@ void SubstitutionMatrix::calcGlobalAaBiasCorrection(const BaseMatrix *m,
         memset(aaSum, 0, sizeof(float) * 20);
 
         for (int j = minPos; j < maxPos; j++) {
-            const short *subMat = profileScores + (j * profileAASize);
+            const char *subMat = profileScores + (j * profileAASize);
             if (i == j) {
                 continue;
             }
@@ -260,20 +247,23 @@ void SubstitutionMatrix::calcGlobalAaBiasCorrection(const BaseMatrix *m,
             }
         }
         for (size_t aa = 0; aa < 20; aa++) {
-//            printf("%d\t%d\t%2.3f\t%d\n", i, (profileScores + (i * profileAASize))[aa],
-//                   aaSum[aa]/windowLength,
-//                   static_cast<int>((profileScores + (i * profileAASize))[aa] -  aaSum[aa]/windowLength) );
-            //std::cout << i << "\t" << (profileScores + (i * profileAASize))[aa] << "\t" <<  aaSum[aa]/windowLength << "\t" <<  (profileScores + (i * profileAASize))[aa] -  aaSum[aa]/windowLength << std::endl;
             profileScores[i * profileAASize + aa] = static_cast<int>((profileScores + (i * profileAASize))[aa] -
                                                                      aaSum[aa] / windowLength);
 //            avg += static_cast<int>((profileScores + (i * profileAASize))[aa] -  aaSum[aa]/windowLength);
         }
     }
-//    std::cout << "avg=" << avg/(N*20) << std::endl;
 }
 
 
-SubstitutionMatrix::~SubstitutionMatrix() {
+SubstitutionMatrix::~SubstitutionMatrix() {}
+
+bool SubstitutionMatrix::mappingHasAminoAcidLetters(){
+    std::string lettersToCheck = "ATGCDEFHIKLMNPQRSVWYX";
+    size_t cnt = 0;
+    for(size_t i = 0; i < lettersToCheck.size(); i++){
+        cnt += (aa2num[static_cast<int>(lettersToCheck[i])] != UCHAR_MAX);
+    }
+    return (cnt == lettersToCheck.size());
 }
 
 void SubstitutionMatrix::setupLetterMapping(){

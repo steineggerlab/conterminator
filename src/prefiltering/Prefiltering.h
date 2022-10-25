@@ -3,7 +3,6 @@
 
 #include "Parameters.h"
 #include "DBReader.h"
-#include "DBWriter.h"
 #include "IndexTable.h"
 #include "BaseMatrix.h"
 #include "ScoreMatrix.h"
@@ -13,6 +12,17 @@
 #include <string>
 #include <list>
 #include <utility>
+
+class QueryMatcherTaxonomyHook;
+
+struct KmerThreshold{
+    int sequenceType;
+    int kmerSize;
+    float base;
+    float sensPerStep;
+};
+
+extern std::vector<KmerThreshold> externalThreshold;
 
 
 class Prefiltering {
@@ -30,7 +40,7 @@ public:
     void runAllSplits(const std::string &resultDB, const std::string &resultDBIndex);
 
 #ifdef HAVE_MPI
-    void runMpiSplits(const std::string &resultDB, const std::string &resultDBIndex, const std::string &localTmpPath);
+    void runMpiSplits(const std::string &resultDB, const std::string &resultDBIndex, const std::string &localTmpPath, const int runRandomId);
 #endif
 
     int runSplits(const std::string &resultDB, const std::string &resultDBIndex, size_t fromSplit, size_t splitProcessCount, bool merge);
@@ -40,13 +50,14 @@ public:
                     const std::vector<std::pair<std::string, std::string>> &splitFiles);
 
     // get substitution matrix
-    static BaseMatrix *getSubstitutionMatrix(const ScoreMatrixFile &scoringMatrixFile, size_t alphabetSize, float bitFactor, bool profileState, bool isNucl);
+    static BaseMatrix *getSubstitutionMatrix(const MultiParam<NuclAA<std::string>> &scoringMatrixFile, MultiParam<NuclAA<int>> alphabetSize, float bitFactor, bool profileState, bool isNucl);
 
     static void setupSplit(DBReader<unsigned int>& dbr, const int alphabetSize, const unsigned int querySeqType, const int threads,
                            const bool templateDBIsIndex, const size_t memoryLimit, const size_t qDbSize,
                            size_t& maxResListLen, int& kmerSize, int& split, int& splitMode);
 
-    static int getKmerThreshold(const float sensitivity, const bool isProfile, const int kmerScore, const int kmerSize);
+    static int getKmerThreshold(const float sensitivity, const bool isProfile, const bool hasContextPseudoCnts,
+                                const SeqProf<int> kmerScore, const int kmerSize);
 
     static void mergeTargetSplits(const std::string &outDB, const std::string &outDBIndex,
                                   const std::vector<std::pair<std::string, std::string>> &fileNames, unsigned int threads);
@@ -78,27 +89,29 @@ private:
     bool templateDBIsIndex;
     int maskMode;
     int maskLowerCaseMode;
+    float maskProb;
     int splitMode;
     int kmerThr;
-    ScoreMatrixFile scoringMatrixFile;
-    ScoreMatrixFile seedScoringMatrixFile;
+    MultiParam<NuclAA<std::string>> scoringMatrixFile;
+    MultiParam<NuclAA<std::string>> seedScoringMatrixFile;
     int targetSeqType;
     bool takeOnlyBestKmer;
     size_t maxResListLen;
 
-    const int kmerScore;
     const float sensitivity;
     size_t maxSeqLen;
     int querySeqType;
     const unsigned int diagonalScoring;
     const unsigned int minDiagScoreThr;
     bool aaBiasCorrection;
+    float aaBiasCorrectionScale;
     const float covThr;
     const int covMode;
     const bool includeIdentical;
     int preloadMode;
     const unsigned int threads;
     int compressed;
+    QueryMatcherTaxonomyHook* taxonomyHook;
 
     bool runSplit(const std::string &resultDB, const std::string &resultDBIndex, size_t split, bool merge);
 
@@ -124,8 +137,7 @@ private:
                          unsigned int resLensSize, size_t empty, size_t maxResults);
 
     bool isSameQTDB();
-
-    void reopenTargetDb();
 };
 
 #endif
+

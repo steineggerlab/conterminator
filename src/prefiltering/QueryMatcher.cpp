@@ -1,11 +1,6 @@
-//
-// Created by mad on 5/26/15.
-//
-#include <new>
-#include <iomanip>
-
 #include "SubstitutionMatrix.h"
 #include "QueryMatcher.h"
+#include "FastSort.h"
 #include "Util.h"
 
 #define FE_1(WHAT, X) WHAT(X)
@@ -27,9 +22,9 @@
 QueryMatcher::QueryMatcher(IndexTable *indexTable, SequenceLookup *sequenceLookup,
                            BaseMatrix *kmerSubMat, BaseMatrix *ungappedAlignmentSubMat,
                            short kmerThr, int kmerSize, size_t dbSize,
-                           unsigned int maxSeqLen, size_t maxHitsPerQuery, bool aaBiasCorrection,
-                           bool diagonalScoring, unsigned int minDiagScoreThr, bool takeOnlyBestKmer)
-                            : idx(indexTable->getAlphabetSize(), kmerSize)
+                           unsigned int maxSeqLen, size_t maxHitsPerQuery, bool aaBiasCorrection, float aaBiasCorrectionScale,
+                           bool diagonalScoring, unsigned int minDiagScoreThr, bool takeOnlyBestKmer, bool isNucleotide)
+        : idx(indexTable->getAlphabetSize(), kmerSize), isNucleotide(isNucleotide), hook(NULL)
 {
     this->kmerSubMat = kmerSubMat;
     this->ungappedAlignmentSubMat = ungappedAlignmentSubMat;
@@ -38,19 +33,20 @@ QueryMatcher::QueryMatcher(IndexTable *indexTable, SequenceLookup *sequenceLooku
     this->kmerThr = kmerThr;
     this->kmerGenerator = new KmerGenerator(kmerSize, indexTable->getAlphabetSize(), kmerThr);
     this->aaBiasCorrection = aaBiasCorrection;
+    this->scaleBiasCorr = aaBiasCorrectionScale;
     this->takeOnlyBestKmer = takeOnlyBestKmer;
     this->stats = new statistics_t();
     // assure that the whole database can be matched (extreme case)
     // this array will need 500 MB for 50 Mio. sequences ( dbSize * 2 * 5byte)
     this->dbSize = dbSize;
-    this->counterResultSize = std::max((size_t)1000000, dbSize);
+    this->foundDiagonalsSize = std::max((size_t)1000000, dbSize);
     this->maxDbMatches = std::max((size_t)1000000, dbSize) * 2;
     // we can never find more hits than dbSize
     this->maxHitsPerQuery = std::min(maxHitsPerQuery, dbSize);
     this->resList = (hit_t *) mem_align(ALIGN_INT, maxHitsPerQuery * sizeof(hit_t) );
     this->databaseHits = new(std::nothrow) IndexEntryLocal[maxDbMatches];
     Util::checkAllocation(databaseHits, "Can not allocate databaseHits memory in QueryMatcher");
-    this->foundDiagonals = (CounterResult*)calloc(counterResultSize, sizeof(CounterResult));
+    this->foundDiagonals = (CounterResult*)calloc(foundDiagonalsSize, sizeof(CounterResult));
     Util::checkAllocation(foundDiagonals, "Can not allocate foundDiagonals memory in QueryMatcher");
     this->lastSequenceHit = this->databaseHits + maxDbMatches;
     this->indexPointer = new(std::nothrow) IndexEntryLocal*[maxSeqLen + 1];
@@ -74,11 +70,11 @@ QueryMatcher::QueryMatcher(IndexTable *indexTable, SequenceLookup *sequenceLooku
 QueryMatcher::~QueryMatcher(){
     deleteDiagonalMatcher(activeCounter);
     free(resList);
-    delete [] scoreSizes;
-    delete [] databaseHits;
-    delete [] indexPointer;
+    delete[] scoreSizes;
+    delete[] databaseHits;
+    delete[] indexPointer;
     free(foundDiagonals);
-    delete [] compositionBias;
+    delete[] compositionBias;
     if(ungappedAlignment != NULL){
         delete ungappedAlignment;
     }
@@ -86,22 +82,7 @@ QueryMatcher::~QueryMatcher(){
     delete kmerGenerator;
 }
 
-size_t QueryMatcher::evaluateBins(IndexEntryLocal **hitsByIndex,
-                                  CounterResult *output,
-                                  size_t outputSize,
-                                  unsigned short indexFrom,
-                                  unsigned short indexTo,
-                                  bool computeTotalScore) {
-    size_t localResultSize = 0;
-#define COUNT_CASE(x) case x: localResultSize += cachedOperation##x->countElements(hitsByIndex, output, outputSize, indexFrom, indexTo, computeTotalScore); break;
-    switch (activeCounter){
-        FOR_EACH(COUNT_CASE,2,4,8,16,32,64,128,256,512,1024,2048)
-    }
-#undef COUNT_CASE
-    return localResultSize;
-}
-
-std::pair<hit_t *, size_t> QueryMatcher::matchQuery (Sequence * querySeq, unsigned int identityId){
+std::pair<hit_t*, size_t> QueryMatcher::matchQuery(Sequence *querySeq, unsigned int identityId, bool isNucleotide) {
     querySeq->resetCurrPos();
 //    std::cout << "Id: " << querySeq->getId() << std::endl;
     memset(scoreSizes, 0, SCORE_RANGE * sizeof(unsigned int));
@@ -109,7 +90,7 @@ std::pair<hit_t *, size_t> QueryMatcher::matchQuery (Sequence * querySeq, unsign
     // bias correction
     if(aaBiasCorrection == true){
         if(Parameters::isEqualDbtype(querySeq->getSeqType(), Parameters::DBTYPE_AMINO_ACIDS)) {
-            SubstitutionMatrix::calcLocalAaBiasCorrection(kmerSubMat, querySeq->numSequence, querySeq->L, compositionBias);
+            SubstitutionMatrix::calcLocalAaBiasCorrection(kmerSubMat, querySeq->numSequence, querySeq->L, compositionBias, scaleBiasCorr);
         }else{
             memset(compositionBias, 0, sizeof(float) * querySeq->L);
         }
@@ -118,45 +99,86 @@ std::pair<hit_t *, size_t> QueryMatcher::matchQuery (Sequence * querySeq, unsign
     }
 
     size_t resultSize = match(querySeq, compositionBias);
-    std::pair<hit_t *, size_t > queryResult;
+    if (hook != NULL) {
+        resultSize = hook->afterDiagonalMatchingHook(*this, resultSize);
+    }
+    std::pair<hit_t *, size_t> queryResult;
     if (diagonalScoring) {
         // write diagonal scores in count value
         ungappedAlignment->processQuery(querySeq, compositionBias, foundDiagonals, resultSize);
         memset(scoreSizes, 0, SCORE_RANGE * sizeof(unsigned int));
+        CounterResult * resultReadPos  = foundDiagonals;
+        CounterResult * resultWritePos = foundDiagonals + resultSize;
+        const bool canBeSorted = (resultSize < (foundDiagonalsSize / 2));
+        if (isNucleotide && canBeSorted) {
+            updateScoreBins(resultReadPos, resultSize);
+            //TODO can crash
+            size_t elementsCntAboveMinDiagonalThr = radixSortByScoreSize(scoreSizes, resultWritePos,
+                                                                         minDiagScoreThr, resultReadPos, resultSize);
+            std::swap(resultReadPos, resultWritePos);
+            size_t len;
+            // only sort the 255 bucket
+            for (len = 0; len < elementsCntAboveMinDiagonalThr
+                          && resultReadPos[len].count >= (UCHAR_MAX - ungappedAlignment->getQueryBias()); len++) { ;
+            }
+            SORT_SERIAL(resultReadPos, resultReadPos + len, CounterResult::sortById);
+            size_t prevId = UINT_MAX;//(foundDiagonals + resultSize)[0].id;
+            size_t max = 0;
+            size_t firstPos = 0;
+            for (size_t i = 0; i < len; i++) {
+                if (prevId == resultReadPos[i].id) {
+                    unsigned int newScore = ungappedAlignment->scoreSingelSequenceByCounterResult(
+                            resultReadPos[i]);
+                    if (newScore > max) {
+                        max = newScore;
+                        resultReadPos[firstPos].diagonal = resultReadPos[i].diagonal;
+                    }
+                } else {
+                    max = i+1<len && resultReadPos[i+1].id == resultReadPos[i].id ? \
+                           ungappedAlignment->scoreSingelSequenceByCounterResult(
+                            resultReadPos[i]) : 0 ;
+                    firstPos = i;
+                }
+                prevId = resultReadPos[i].id;
+            }
+            resultSize = keepMaxScoreElementOnly(resultReadPos, elementsCntAboveMinDiagonalThr);
+            memset(scoreSizes, 0, SCORE_RANGE * sizeof(unsigned int));
+        }else{
+            resultSize = keepMaxScoreElementOnly(resultReadPos, resultSize);
+            resultWritePos = foundDiagonals + resultSize;
+        }
 
-
-        resultSize = keepMaxScoreElementOnly(foundDiagonals, resultSize);
-
-        updateScoreBins(foundDiagonals, resultSize);
+        updateScoreBins(resultReadPos, resultSize);
         unsigned int diagonalThr = computeScoreThreshold(scoreSizes, this->maxHitsPerQuery);
         diagonalThr = std::max(minDiagScoreThr, diagonalThr);
 
-
         // sort to not lose highest scoring hits if > 150.000 hits are searched
-        if(resultSize < counterResultSize/2){
+        if(resultSize < foundDiagonalsSize / 2){
             unsigned int maxDiagonalScoreThr = (UCHAR_MAX - ungappedAlignment->getQueryBias());
             bool scoreIsTruncated = (diagonalThr >= maxDiagonalScoreThr) ? true : false;
-            size_t elementsCntAboveDiagonalThr = radixSortByScoreSize(scoreSizes, foundDiagonals + resultSize, diagonalThr, foundDiagonals, resultSize);
+            size_t elementsCntAboveDiagonalThr = radixSortByScoreSize(scoreSizes, resultWritePos, diagonalThr, resultReadPos, resultSize);
+            std::swap(resultReadPos, resultWritePos);
             if (scoreIsTruncated == true) {
                 memset(scoreSizes, 0, SCORE_RANGE * sizeof(unsigned int));
-                std::pair<size_t, unsigned int> rescoreResult = rescoreHits(querySeq, scoreSizes, foundDiagonals + resultSize, elementsCntAboveDiagonalThr, ungappedAlignment, maxDiagonalScoreThr);
+                std::pair<size_t, unsigned int> rescoreResult = rescoreHits(querySeq, scoreSizes, resultReadPos, elementsCntAboveDiagonalThr, ungappedAlignment, maxDiagonalScoreThr);
                 size_t newResultSize = rescoreResult.first;
                 unsigned int maxSelfScoreMinusDiag = rescoreResult.second;
-                elementsCntAboveDiagonalThr = radixSortByScoreSize(scoreSizes, foundDiagonals, 0, foundDiagonals + resultSize, newResultSize);
-                queryResult = getResult<UNGAPPED_DIAGONAL_SCORE>(foundDiagonals, elementsCntAboveDiagonalThr, identityId, 0, ungappedAlignment, maxSelfScoreMinusDiag);
+                elementsCntAboveDiagonalThr = radixSortByScoreSize(scoreSizes, resultWritePos, 0, resultReadPos, newResultSize);
+                std::swap(resultReadPos, resultWritePos);
+                queryResult = getResult<UNGAPPED_DIAGONAL_SCORE>(resultReadPos, elementsCntAboveDiagonalThr, identityId, 0, ungappedAlignment, maxSelfScoreMinusDiag);
             }else{
-                queryResult = getResult<UNGAPPED_DIAGONAL_SCORE>(foundDiagonals + resultSize, elementsCntAboveDiagonalThr, identityId, diagonalThr, ungappedAlignment, false);
+                queryResult = getResult<UNGAPPED_DIAGONAL_SCORE>(resultReadPos, elementsCntAboveDiagonalThr, identityId, diagonalThr, ungappedAlignment, false);
             }
             stats->truncated = 0;
         }else{
             //Debug(Debug::WARNING) << "Sequence " << querySeq->getDbKey() << " produces too many hits. Results might be truncated\n";
-            queryResult = getResult<UNGAPPED_DIAGONAL_SCORE>(foundDiagonals, resultSize, identityId, diagonalThr, ungappedAlignment, false);
+            queryResult = getResult<UNGAPPED_DIAGONAL_SCORE>(resultReadPos, resultSize, identityId, diagonalThr, ungappedAlignment, false);
             stats->truncated = 1;
         }
     }else{
         unsigned int thr = computeScoreThreshold(scoreSizes, this->maxHitsPerQuery);
         thr = std::max(minDiagScoreThr, thr);
-        if(resultSize < counterResultSize/2) {
+        if(resultSize < foundDiagonalsSize / 2) {
             int elementsCntAboveDiagonalThr = radixSortByScoreSize(scoreSizes, foundDiagonals + resultSize, thr, foundDiagonals, resultSize);
             queryResult = getResult<KMER_SCORE>(foundDiagonals + resultSize, elementsCntAboveDiagonalThr, identityId, thr, ungappedAlignment, false);
             stats->truncated = 0;
@@ -168,9 +190,9 @@ std::pair<hit_t *, size_t> QueryMatcher::matchQuery (Sequence * querySeq, unsign
     }
     if(queryResult.second > 1){
         if (identityId != UINT_MAX){
-            std::sort(resList + 1, resList + queryResult.second, hit_t::compareHitsByScoreAndId);
+            SORT_SERIAL(resList + 1, resList + queryResult.second, hit_t::compareHitsByScoreAndId);
         } else{
-            std::sort(resList, resList + queryResult.second, hit_t::compareHitsByScoreAndId);
+            SORT_SERIAL(resList, resList + queryResult.second, hit_t::compareHitsByScoreAndId);
         }
     }
     return queryResult;
@@ -188,20 +210,16 @@ size_t QueryMatcher::match(Sequence *seq, float *compositionBias) {
     size_t seqListSize;
     unsigned short indexStart = 0;
     unsigned short indexTo = 0;
-    const unsigned char xIndex = kmerSubMat->aa2num[static_cast<int>('X')];
-
-    while(seq->hasNextKmer()){
-        const unsigned char * kmer = seq->nextKmer();
-        const unsigned char * pos = seq->getAAPosInSpacedPattern();
+    while (seq->hasNextKmer()) {
+        const unsigned char *kmer = seq->nextKmer();
+        const unsigned char *pos = seq->getAAPosInSpacedPattern();
         const unsigned short current_i = seq->getCurrentPosition();
 
         float biasCorrection = 0;
-        int xCount = 0;
         for (int i = 0; i < kmerSize; i++){
-            xCount += (kmer[i] == xIndex);
             biasCorrection += compositionBias[current_i + static_cast<short>(pos[i])];
         }
-        if(xCount > 0){
+        if (seq->kmerContainsX()) {
             indexTo = current_i;
             indexPointer[current_i] = sequenceHits;
             continue;
@@ -213,14 +231,14 @@ size_t QueryMatcher::match(Sequence *seq, float *compositionBias) {
         // adjust kmer threshold based on composition bias
         kmerGenerator->setThreshold(kmerMatchScore);
 
-        const size_t * index;
+        const size_t *index;
         size_t exactKmer;
         size_t kmerElementSize;
-        if(takeOnlyBestKmer){
+        if (takeOnlyBestKmer) {
             kmerElementSize = 1;
             exactKmer = idx.int2index(kmer);
             index = &exactKmer;
-        }else{
+        } else {
             std::pair<size_t*, size_t> kmerList = kmerGenerator->generateKmerList(kmer);
             kmerElementSize = kmerList.second;
             index = kmerList.first;
@@ -230,53 +248,49 @@ size_t QueryMatcher::match(Sequence *seq, float *compositionBias) {
         // match the index table
 
         //idx.printKmer(kmerList.index[0], kmerSize, m->num2aa);
-        //std::cout  << "\t" << kmerMatchScore << std::endl;
+        //std::cout << "\t" << kmerMatchScore << std::endl;
         kmerListLen += kmerElementSize;
 
         for (unsigned int kmerPos = 0; kmerPos < kmerElementSize; kmerPos++) {
-            // generate k-mer list
-//                        idx.printKmer(index[kmerPos], kmerSize, m->num2aa);
-//                        std::cout << std::endl;
-
             const IndexEntryLocal *entries = indexTable->getDBSeqList(index[kmerPos], &seqListSize);
+            // DEBUG
+            //std::cout << seq->getDbKey() << std::endl;
+            //idx.printKmer(index[kmerPos], kmerSize, kmerSubMat->num2aa);
+            //std::cout << "\t" << current_i << "\t"<< index[kmerPos] << std::endl;
+            //for (size_t i = 0; i < seqListSize; i++) {
+            //    char diag = entries[i].position_j - current_i;
+            //    std::cout << "(" << entries[i].seqId << " " << (int) diag << ")\t";
+            //}
+            //std::cout << std::endl;
 
-            /////DEBUG
-           /* 
-            idx.printKmer(index[kmerPos], kmerSize, m->num2aa);
-            std::cout << "\t" << current_i << "\t"<< index[kmerPos] << std::endl;
-            for(size_t i = 0; i < seqListSize; i++){
-                char diag = entries[i].position_j - current_i;
-                std::cout << "(" << entries[i].seqId << " " << (int) diag << ")\t";
-            }
-            std::cout << std::endl;
-            */
-            /////DEBUG
             // detected overflow while matching
             if ((sequenceHits + seqListSize) >= lastSequenceHit) {
                 stats->diagonalOverflow = true;
                 // last pointer
                 indexPointer[current_i + 1] = sequenceHits;
-//                std::cout << "Overflow in i=" << indexStart << std::endl;
-                const size_t hitCount = evaluateBins(indexPointer,
-                                                     foundDiagonals + overflowHitCount,
-                                                     counterResultSize - overflowHitCount,
-                                                     indexStart, current_i, (diagonalScoring == false));
-                if(overflowHitCount != 0){ //merge lists
-                    // hitCount is max. dbSize so there can be no overflow in mergeElemens
-                    overflowHitCount = mergeElements(foundDiagonals, overflowHitCount +  hitCount);
+                //std::cout << "Overflow in i=" << indexStart << std::endl;
+                const size_t hitCount = findDuplicates(indexPointer,
+                                                       foundDiagonals + overflowHitCount,
+                                                       foundDiagonalsSize - overflowHitCount,
+                                                       indexStart, current_i, (diagonalScoring == false));
+
+                if (overflowHitCount != 0) {
+                    // merge lists, hitCount is max. dbSize so there can be no overflow in mergeElements
+                    overflowHitCount = mergeElements(foundDiagonals, hitCount + overflowHitCount);
                 } else {
                     overflowHitCount = hitCount;
                 }
                 // reset pointer position
                 sequenceHits = databaseHits;
-                indexPointer[current_i] = databaseHits;
+                indexPointer[current_i] = sequenceHits;
                 indexStart = current_i;
                 overflowNumMatches += numMatches;
                 numMatches = 0;
-                if((sequenceHits + seqListSize) >= lastSequenceHit){
+                // TODO might delete this?
+                if ((sequenceHits + seqListSize) >= lastSequenceHit){
                     goto outer;
                 }
-            };
+            }
             memcpy(sequenceHits, entries, sizeof(IndexEntryLocal) * seqListSize);
             sequenceHits += seqListSize;
             numMatches += seqListSize;
@@ -285,10 +299,11 @@ size_t QueryMatcher::match(Sequence *seq, float *compositionBias) {
     }
     outer:
     indexPointer[indexTo + 1] = databaseHits + numMatches;
-    size_t hitCount = evaluateBins(indexPointer, foundDiagonals + overflowHitCount,
-                                   counterResultSize - overflowHitCount, indexStart, indexTo, (diagonalScoring == false));
-    //fill the output
-    if(overflowHitCount != 0){ // overflow occurred
+    // fill the output
+    size_t hitCount = findDuplicates(indexPointer, foundDiagonals + overflowHitCount,
+                                     foundDiagonalsSize - overflowHitCount, indexStart, indexTo, (diagonalScoring == false));
+    if (overflowHitCount != 0) {
+        // overflow occurred
         hitCount = mergeElements(foundDiagonals, overflowHitCount + hitCount);
     }
     stats->doubleMatches = 0;
@@ -297,9 +312,9 @@ size_t QueryMatcher::match(Sequence *seq, float *compositionBias) {
         updateScoreBins(foundDiagonals, hitCount);
         stats->doubleMatches = getDoubleDiagonalMatches();
     }
-    stats->kmersPerPos   = ((double)kmerListLen/(double)seq->L);
-    stats->querySeqLen   = seq->L;
-    stats->dbMatches     = overflowNumMatches + numMatches;
+    stats->kmersPerPos = ((double)kmerListLen/(double)seq->L);
+    stats->querySeqLen = seq->L;
+    stats->dbMatches   = overflowNumMatches + numMatches;
 
     return hitCount;
 }
@@ -320,12 +335,12 @@ void QueryMatcher::updateScoreBins(CounterResult *result, size_t elementCount) {
 }
 
 template <int TYPE>
-std::pair<hit_t *, size_t>  QueryMatcher::getResult(CounterResult * results,
-                                                    size_t resultSize,
-                                                    const unsigned int id,
-                                                    const unsigned short thr,
-                                                    UngappedAlignment * align,
-                                                    const int rescaleScore) {
+std::pair<hit_t*, size_t> QueryMatcher::getResult(CounterResult * results,
+                                                  size_t resultSize,
+                                                  const unsigned int id,
+                                                  const unsigned short thr,
+                                                  UngappedAlignment *align,
+                                                  const int rescaleScore) {
     size_t currentHits = 0;
     if (id != UINT_MAX) {
         hit_t *result = (resList + 0);
@@ -339,10 +354,6 @@ std::pair<hit_t *, size_t>  QueryMatcher::getResult(CounterResult * results,
         result->prefScore = rawScore;
         result->diagonal = 0;
         //result->pScore = (((float)rawScore) - mu)/ sqrtMu;
-        if (TYPE == KMER_SCORE) {
-            float logProb = rawScore;
-            result->prefScore = static_cast<int>(logProb);
-        }
         currentHits++;
     }
 
@@ -384,8 +395,8 @@ std::pair<hit_t *, size_t>  QueryMatcher::getResult(CounterResult * results,
 
 void QueryMatcher::initDiagonalMatcher(size_t dbsize, unsigned int maxDbMatches) {
     uint64_t l2CacheSize = Util::getL2CacheSize();
-#define INIT(x)   cachedOperation##x = new CacheFriendlyOperations<x>(dbsize, maxDbMatches/x); \
-                  activeCounter = x;
+#define INIT(x) cachedOperation##x = new CacheFriendlyOperations<x>(dbsize, maxDbMatches/x); \
+                activeCounter = x;
     if(dbsize/2 < l2CacheSize){
         INIT(2)
     }else if(dbsize/4 < l2CacheSize){
@@ -420,6 +431,19 @@ void QueryMatcher::deleteDiagonalMatcher(unsigned int activeCounter){
 #undef DELETE_CASE
 }
 
+size_t QueryMatcher::findDuplicates(IndexEntryLocal **hitsByIndex,
+                                    CounterResult *output, size_t outputSize,
+                                    unsigned short indexFrom, unsigned short indexTo,
+                                    bool computeTotalScore) {
+    size_t localResultSize = 0;
+#define COUNT_CASE(x) case x: localResultSize += cachedOperation##x->findDuplicates(hitsByIndex, output, outputSize, indexFrom, indexTo, computeTotalScore); break;
+    switch (activeCounter){
+        FOR_EACH(COUNT_CASE,2,4,8,16,32,64,128,256,512,1024,2048)
+    }
+#undef COUNT_CASE
+    return localResultSize;
+}
+
 size_t QueryMatcher::mergeElements(CounterResult *foundDiagonals, size_t hitCounter) {
     size_t overflowHitCount = 0;
 #define MERGE_CASE(x) \
@@ -446,10 +470,10 @@ size_t QueryMatcher::keepMaxScoreElementOnly(CounterResult *foundDiagonals, size
 }
 
 size_t QueryMatcher::radixSortByScoreSize(const unsigned int * scoreSizes,
-                                        CounterResult *writePos,
-                                        const unsigned int scoreThreshold,
-                                        const CounterResult *results,
-                                        const size_t resultSize) {
+                                          CounterResult *writePos,
+                                          const unsigned int scoreThreshold,
+                                          const CounterResult *results,
+                                          const size_t resultSize) {
     CounterResult * ptr[SCORE_RANGE];
     ptr[0] = writePos+resultSize;
     CounterResult * ptr_prev=ptr[0];
@@ -473,14 +497,14 @@ size_t QueryMatcher::radixSortByScoreSize(const unsigned int * scoreSizes,
 }
 
 std::pair<size_t, unsigned int> QueryMatcher::rescoreHits(Sequence * querySeq, unsigned int * scoreSizes, CounterResult *results,
-        size_t resultSize, UngappedAlignment *align, int lowerBoundScore) {
+                                                          size_t resultSize, UngappedAlignment *align, int lowerBoundScore) {
     size_t elements = 0;
     const unsigned char * query = querySeq->numSequence;
     int maxSelfScore = align->scoreSingleSequence(std::make_pair(query, querySeq->L), 0,0);
 
-    maxSelfScore = std::min(maxSelfScore, USHRT_MAX);
     maxSelfScore = (maxSelfScore-lowerBoundScore);
     maxSelfScore = std::max(1, maxSelfScore);
+    maxSelfScore = std::min(maxSelfScore, USHRT_MAX);
     float fltMaxSelfScore = static_cast<float>(maxSelfScore);
     for (size_t i = 0; i < resultSize && results[i].count >= lowerBoundScore; i++) {
         unsigned int newScore = align->scoreSingelSequenceByCounterResult(results[i]);
@@ -494,8 +518,8 @@ std::pair<size_t, unsigned int> QueryMatcher::rescoreHits(Sequence * querySeq, u
 }
 
 template std::pair<hit_t *, size_t>  QueryMatcher::getResult<0>(CounterResult * results, size_t resultSize,
-                                                    const unsigned int id, const unsigned short thr,
-                                                    UngappedAlignment * align, const int rescaleScore);
+                                                                const unsigned int id, const unsigned short thr,
+                                                                UngappedAlignment * align, const int rescaleScore);
 template std::pair<hit_t *, size_t>  QueryMatcher::getResult<1>(CounterResult * results, size_t resultSize,
                                                                 const unsigned int id, const unsigned short thr,
                                                                 UngappedAlignment * align, const int rescaleScore);

@@ -1,8 +1,6 @@
 #ifndef CLUSTERING_H
 #define CLUSTERING_H
 
-#include <list>
-#include <string>
 #include <unordered_map>
 
 #include "DBReader.h"
@@ -22,7 +20,7 @@ public:
 
 private:
 
-    void writeData(DBWriter *dbw, const std::unordered_map<unsigned int, std::vector<unsigned int>> &ret);
+    void writeData(DBWriter *dbw, const std::pair<unsigned int, unsigned int> * ret, size_t dbSize);
 
     DBReader<unsigned int> *seqDbr;
     DBReader<unsigned int> *alnDbr;

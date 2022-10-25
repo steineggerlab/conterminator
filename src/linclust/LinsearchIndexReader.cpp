@@ -15,6 +15,7 @@
 #define SIZE_T_MAX ((size_t) -1)
 #endif
 
+extern const char* index_version_compatible;
 
 template <int TYPE>
 size_t LinsearchIndexReader::pickCenterKmer(KmerPosition<short> *hashSeqPair, size_t splitKmerCount) {
@@ -137,7 +138,10 @@ void LinsearchIndexReader::mergeAndWriteIndex(DBWriter & dbw, std::vector<std::s
     dbw.alignToPageSize();
     // clear memory
     for(size_t file = 0; file < tmpFiles.size(); file++) {
-        fclose(files[file]);
+        if (fclose(files[file]) != 0) {
+            Debug(Debug::ERROR) << "Cannot close file " << tmpFiles[file] << "\n";
+            EXIT(EXIT_FAILURE);
+        }
         FileUtil::munmapData((void*)entries[file], dataSizes[file]);
     }
     delete [] dataSizes;
@@ -238,14 +242,17 @@ bool LinsearchIndexReader::checkIfIndexFile(DBReader<unsigned int> *pReader) {
     if(version == NULL){
         return false;
     }
-    return (strncmp(version, PrefilteringIndexReader::CURRENT_VERSION, strlen(PrefilteringIndexReader::CURRENT_VERSION)) == 0 ) ? true : false;
+    return (strncmp(version, index_version_compatible, strlen(index_version_compatible)) == 0 ) ? true : false;
 }
 
 void LinsearchIndexReader::writeKmerIndexToDisk(std::string fileName, KmerPosition<short> *kmers, size_t kmerCnt){
     FILE* filePtr = fopen(fileName.c_str(), "wb");
     if(filePtr == NULL) { perror(fileName.c_str()); EXIT(EXIT_FAILURE); }
     fwrite(kmers, sizeof(KmerPosition<unsigned short>), kmerCnt, filePtr);
-    fclose(filePtr);
+    if (fclose(filePtr) != 0) {
+        Debug(Debug::ERROR) << "Cannot close file " << fileName << "\n";
+        EXIT(EXIT_FAILURE);
+    }
 }
 
 
@@ -255,7 +262,7 @@ std::string LinsearchIndexReader::findIncompatibleParameter(DBReader<unsigned in
         return "maxSeqLen";
     if (meta.seqType != dbtype)
         return "seqType";
-    if (Parameters::isEqualDbtype(dbtype, Parameters::DBTYPE_NUCLEOTIDES) == false && meta.alphabetSize != par.alphabetSize)
+    if (Parameters::isEqualDbtype(dbtype, Parameters::DBTYPE_NUCLEOTIDES) == false && meta.alphabetSize != par.alphabetSize.values.aminoacid())
         return "alphabetSize";
     if (meta.kmerSize != par.kmerSize)
         return "kmerSize";
@@ -263,7 +270,8 @@ std::string LinsearchIndexReader::findIncompatibleParameter(DBReader<unsigned in
         return "maskMode";
     if (meta.spacedKmer != par.spacedKmer)
         return "spacedKmer";
-    if (par.seedScoringMatrixFile != PrefilteringIndexReader::getSubstitutionMatrixName(&index))
+    if (BaseMatrix::unserializeName(par.seedScoringMatrixFile.values.aminoacid().c_str()) != PrefilteringIndexReader::getSubstitutionMatrixName(&index) &&
+        BaseMatrix::unserializeName(par.seedScoringMatrixFile.values.nucleotide().c_str()) != PrefilteringIndexReader::getSubstitutionMatrixName(&index))
         return "seedScoringMatrixFile";
     if (par.spacedKmerPattern != PrefilteringIndexReader::getSpacedPattern(&index))
         return "spacedKmerPattern";
@@ -273,6 +281,11 @@ std::string LinsearchIndexReader::findIncompatibleParameter(DBReader<unsigned in
 std::string LinsearchIndexReader::searchForIndex(const std::string& dbName) {
     std::string outIndexName = dbName + ".linidx";
     if (FileUtil::fileExists((outIndexName + ".dbtype").c_str()) == true) {
+        const bool ignore = getenv("MMSEQS_IGNORE_INDEX") != NULL;
+        if (ignore) {
+            Debug(Debug::WARNING) << "Ignoring precomputed index, since environment variable MMSEQS_IGNORE_INDEX is set\n";
+            return "";
+        }
         return outIndexName;
     }
     return "";

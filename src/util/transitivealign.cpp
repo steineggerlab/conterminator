@@ -11,85 +11,11 @@
 #include "BacktraceTranslator.h"
 #include "AlignmentSymmetry.h"
 #include "DistanceCalculator.h"
+#include "FastSort.h"
 
 #ifdef OPENMP
 #include <omp.h>
 #endif
-
-// find local maxiumum in backtrace and updates the result
-void updateResultByRescoringBacktrace(char *querySeq, char *targetSeq, const char **subMat,
-                                      EvalueComputation  & evaluer,
-                                      int gapOpen, int gapExtend, Matcher::result_t &result) {
-    int maxScore = 0;
-    int maxBtEndPos = 0;
-    int maxBtStartPos = 0;
-    int maxQueryEndPos = 0;
-    int maxQueryStartPos = 0;
-    int maxTargetStartPos = 0;
-    int maxTargetEndPos = 0;
-    int minPos = -1;
-    int minQueryPos = result.qStartPos-1;
-    int minTargetPos = result.dbStartPos-1;
-    int score = 0;
-    int identicalAAs = 0;
-    int maxIdAaCnt = 0;
-    int queryPos  = result.qStartPos;
-    int targetPos = result.dbStartPos;
-    bool isGapOpen = false;
-
-    for(unsigned int pos = 0; pos < result.backtrace.size(); pos++){
-        char letter = result.backtrace[pos];
-        int curr;
-        if (letter == 'M') {
-            curr = subMat[static_cast<int>(querySeq[queryPos])][static_cast<int>(targetSeq[targetPos])];
-            identicalAAs += (querySeq[queryPos] == targetSeq[targetPos]);
-            isGapOpen = false;
-        } else {
-            curr = (isGapOpen) ? -gapExtend : -gapOpen;
-            isGapOpen = (isGapOpen==false) ? true : isGapOpen;
-        }
-        score = curr + score;
-        // minimum
-        const bool isMinScore = (score <= 0);
-        score =  (isMinScore) ? 0 : score;
-        identicalAAs = (isMinScore) ? 0 : identicalAAs;
-        if(isMinScore){
-            minPos = pos;
-            minQueryPos = (letter == 'D') ? queryPos - 1 : queryPos;
-            minTargetPos = (letter == 'I') ? targetPos - 1 : targetPos;
-        }
-        // new max
-        const bool isNewMaxScore = (score > maxScore);
-        if(isNewMaxScore){
-            maxBtEndPos = pos;
-            maxQueryEndPos = queryPos;
-            maxTargetEndPos = targetPos;
-            maxBtStartPos = minPos + 1;
-            maxQueryStartPos = minQueryPos + 1;
-            maxTargetStartPos = minTargetPos + 1;
-            maxScore = score;
-            maxIdAaCnt =  identicalAAs;
-        }
-        queryPos  += (letter == 'M' || letter == 'I') ? 1 : 0;
-        targetPos += (letter == 'M' || letter == 'D') ? 1 : 0;
-    }
-//    std::cout << queryId << " " << targetId << " " << maxQueryStartPos << " " << maxQueryEndPos << " " <<  maxTargetStartPos << " "  << maxTargetEndPos << " " <<  result.backtrace << std::endl;
-    result.qStartPos = maxQueryStartPos;
-    result.qEndPos = maxQueryEndPos;
-    result.dbStartPos = maxTargetStartPos;
-    result.dbEndPos = maxTargetEndPos;
-    double bitScore = evaluer.computeBitScore(maxScore);
-    double evalue   = evaluer.computeEvalue(maxScore, result.qLen);
-    result.score = bitScore;
-    result.eval = evalue;
-    result.alnLength = (maxBtEndPos - maxBtStartPos) + 1;
-    result.seqId = static_cast<float>(maxIdAaCnt) / static_cast<float>(result.alnLength);
-    result.backtrace = result.backtrace.substr(maxBtStartPos, maxBtEndPos);
-}
-
-
-
-
 
 int transitivealign(int argc, const char **argv, const Command &command) {
     Parameters &par = Parameters::getInstance();
@@ -104,10 +30,10 @@ int transitivealign(int argc, const char **argv, const Command &command) {
 
     BaseMatrix *subMat;
     if (Parameters::isEqualDbtype(querySeqType, Parameters::DBTYPE_NUCLEOTIDES)) {
-        subMat = new NucleotideMatrix(par.scoringMatrixFile.nucleotides, 1.0, 0.0);
+        subMat = new NucleotideMatrix(par.scoringMatrixFile.values.nucleotide().c_str(), 1.0, 0.0);
     } else {
         // keep score bias at 0.0 (improved ROC)
-        subMat = new SubstitutionMatrix(par.scoringMatrixFile.aminoacids, 2.0, 0.0);
+        subMat = new SubstitutionMatrix(par.scoringMatrixFile.values.aminoacid().c_str(), 2.0, 0.0);
     }
 
     DBReader<unsigned int> alnReader(par.db2.c_str(), par.db2Index.c_str(), par.threads, DBReader<unsigned int>::USE_DATA|DBReader<unsigned int>::USE_INDEX);
@@ -121,7 +47,7 @@ int transitivealign(int argc, const char **argv, const Command &command) {
     DBWriter resultWriter(tmpRes.c_str(), tmpResIndex.c_str(), par.threads, par.compressed, Parameters::DBTYPE_ALIGNMENT_RES);
     resultWriter.open();
 
-    EvalueComputation evaluer(sequenceDbr.getAminoAcidDBSize(), subMat, par.gapOpen, par.gapExtend);
+    EvalueComputation evaluer(sequenceDbr.getAminoAcidDBSize(), subMat, par.gapOpen.values.aminoacid(), par.gapExtend.values.aminoacid());
     const size_t flushSize = 100000000;
     size_t iterations = static_cast<int>(ceil(static_cast<double>(alnReader.getSize()) / static_cast<double>(flushSize)));
     for (size_t i = 0; i < iterations; i++) {
@@ -134,13 +60,14 @@ int transitivealign(int argc, const char **argv, const Command &command) {
 #ifdef OPENMP
             thread_idx = (unsigned int) omp_get_thread_num();
 #endif
-
-            Matcher matcher(querySeqType, par.maxSeqLen, subMat, &evaluer, par.compBiasCorrection, par.gapOpen, par.gapExtend);
+            // TODO: is this right? targetSeqType defined as -1 temporarily
+            Matcher matcher(querySeqType, -1, par.maxSeqLen, subMat, &evaluer,
+                            par.compBiasCorrection, par.compBiasCorrectionScale, par.gapOpen.values.aminoacid(), par.gapExtend.values.aminoacid(), 0.0, par.zdrop);
 
 //            Sequence query(par.maxSeqLen, targetSeqType, subMat, par.kmerSize, par.spacedKmer, par.compBiasCorrection);
 //            Sequence target(par.maxSeqLen, targetSeqType, subMat, par.kmerSize, par.spacedKmer, par.compBiasCorrection);
 
-            char * buffer = new char[1024 + 32768*4];
+            char buffer[1024 + 32768*4];
             BacktraceTranslator btTranslate;
             std::vector<Matcher::result_t> results;
             results.reserve(300);
@@ -208,14 +135,14 @@ int transitivealign(int argc, const char **argv, const Command &command) {
 //                            result.backtrace.push_back('M');
                         }else{
                             btTranslate.translateResult(swappedResult, results[entryIdx_j], result);
-                            updateResultByRescoringBacktrace(querySeq, targetSeq, fastMatrix.matrix, evaluer, par.gapOpen, par.gapExtend, result);
+                            Matcher::updateResultByRescoringBacktrace(querySeq, targetSeq, fastMatrix.matrix, evaluer, par.gapOpen.values.aminoacid(), par.gapExtend.values.aminoacid(), result);
                         }
                         // checkCriteria and Util::canBeCovered always work together
                         if (Alignment::checkCriteria(result, isIdentity, par.evalThr, par.seqIdThr, par.alnLenThr, par.covMode, par.covThr)) {
                             outputResults.push_back(result);
                         }
                     }
-                    std::sort(outputResults.begin(), outputResults.end(), Matcher::compareHits);
+                    SORT_SERIAL(outputResults.begin(), outputResults.end(), Matcher::compareHits);
                     for (size_t aliId = 0; aliId < outputResults.size(); aliId++) {
                         size_t len = Matcher::resultToBuffer(tmpBuff, outputResults[aliId], true, true);
                         resultWriter.writeAdd(buffer, queryIdLen + len, thread_idx);
@@ -224,7 +151,6 @@ int transitivealign(int argc, const char **argv, const Command &command) {
                 }
                 resultWriter.writeEnd(alnKey, thread_idx);
             }
-            delete [] buffer;
         }
         alnReader.remapData();
     }
@@ -281,12 +207,8 @@ int transitivealign(int argc, const char **argv, const Command &command) {
     }
 
     // memoryLimit in bytes
-    size_t memoryLimit;
-    if (par.splitMemoryLimit > 0) {
-        memoryLimit = par.splitMemoryLimit;
-    } else {
-        memoryLimit = static_cast<size_t>(Util::getTotalSystemMemory() * 0.9);
-    }
+    size_t memoryLimit=Util::computeMemory(par.splitMemoryLimit);
+
     // compute splits
     std::vector<std::pair<unsigned int, size_t > > splits;
     std::vector<std::pair<std::string , std::string > > splitFileNames;
@@ -309,8 +231,8 @@ int transitivealign(int argc, const char **argv, const Command &command) {
     for (size_t split = 0; split < splits.size(); split++) {
         unsigned int dbKeyToWrite = splits[split].first;
         size_t bytesToWrite = splits[split].second;
-        char *tmpData = new char[bytesToWrite];
-        Util::checkAllocation(tmpData, "Could not allocate tmpData memory in doswap");
+        char *tmpData = new(std::nothrow) char[bytesToWrite];
+        Util::checkAllocation(tmpData, "Cannot allocate tmpData memory");
         Debug(Debug::INFO) << "\nReading results.\n";
 #pragma omp parallel
         {

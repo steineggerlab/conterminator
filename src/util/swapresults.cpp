@@ -9,6 +9,7 @@
 #include "AlignmentSymmetry.h"
 #include "PrefilteringIndexReader.h"
 #include "IndexReader.h"
+#include "FastSort.h"
 
 #ifdef OPENMP
 #include <omp.h>
@@ -38,6 +39,8 @@ int doswap(Parameters& par, bool isGeneralMode) {
     std::string parOutDbStr(parOutDb);
     std::string parOutDbIndexStr(parOutDbIndex);
 
+    BaseMatrix *subMat = NULL;
+    EvalueComputation *evaluer = NULL;
     size_t aaResSize = 0;
     unsigned int maxTargetId = 0;
     char *targetElementExists = NULL;
@@ -82,9 +85,19 @@ int doswap(Parameters& par, bool isGeneralMode) {
             unsigned int key = target.sequenceReader->getDbKey(i);
             targetElementExists[key] = 1;
         }
+        int gapOpen, gapExtend;
+        if (Parameters::isEqualDbtype(target.getDbtype(), Parameters::DBTYPE_NUCLEOTIDES)) {
+            subMat = new NucleotideMatrix(par.scoringMatrixFile.values.nucleotide().c_str(), 1.0, 0.0);
+            gapOpen = par.gapOpen.values.nucleotide();
+            gapExtend =  par.gapExtend.values.nucleotide();
+        } else {
+            // keep score bias at 0.0 (improved ROC)
+            subMat = new SubstitutionMatrix(par.scoringMatrixFile.values.aminoacid().c_str(), 2.0, 0.0);
+            gapOpen = par.gapOpen.values.aminoacid();
+            gapExtend = par.gapExtend.values.aminoacid();
+        }
+        evaluer = new EvalueComputation(aaResSize, subMat, gapOpen, gapExtend);
     }
-    SubstitutionMatrix subMat(par.scoringMatrixFile.aminoacids, 2.0, 0.0);
-    EvalueComputation evaluer(aaResSize, &subMat, par.gapOpen, par.gapExtend);
 
     DBReader<unsigned int> resultDbr(parResultDb, parResultDbIndex, par.threads, DBReader<unsigned int>::USE_INDEX|DBReader<unsigned int>::USE_DATA);
     resultDbr.open(DBReader<unsigned int>::SORT_BY_OFFSET);
@@ -128,12 +141,8 @@ int doswap(Parameters& par, bool isGeneralMode) {
     }
 
     // memoryLimit in bytes
-    size_t memoryLimit;
-    if (par.splitMemoryLimit > 0) {
-        memoryLimit = par.splitMemoryLimit;
-    } else {
-        memoryLimit = static_cast<size_t>(Util::getTotalSystemMemory() * 0.9);
-    }
+    size_t memoryLimit=Util::computeMemory(par.splitMemoryLimit);
+
     size_t bytesForTargetElements = sizeof(size_t) * (maxTargetId + 2);
     memoryLimit = (memoryLimit > bytesForTargetElements) ? (memoryLimit - bytesForTargetElements) : 0;
 
@@ -158,8 +167,8 @@ int doswap(Parameters& par, bool isGeneralMode) {
     for (size_t split = 0; split < splits.size(); split++) {
         unsigned int dbKeyToWrite = splits[split].first;
         size_t bytesToWrite = splits[split].second;
-        char *tmpData = new char[bytesToWrite];
-        Util::checkAllocation(tmpData, "Can not allocate tmpData memory in doswap");
+        char *tmpData = new(std::nothrow) char[bytesToWrite];
+        Util::checkAllocation(tmpData, "Cannot allocate tmpData memory");
         Debug(Debug::INFO) << "\nReading results.\n";
         Debug::Progress progress(resultSize);
 #pragma omp parallel
@@ -214,7 +223,7 @@ int doswap(Parameters& par, bool isGeneralMode) {
                 continue;
             }
             const size_t columns = Util::getWordsOfLine(data, entry, 255);
-            isAlignmentResult = columns >= Matcher::ALN_RES_WITH_OUT_BT_COL_CNT;
+            isAlignmentResult = columns >= Matcher::ALN_RES_WITHOUT_BT_COL_CNT;
             hasBacktrace = columns >= Matcher::ALN_RES_WITH_BT_COL_CNT;
             break;
         }
@@ -239,7 +248,7 @@ int doswap(Parameters& par, bool isGeneralMode) {
             std::vector<Matcher::result_t> curRes;
             curRes.reserve(300);
 
-            char buffer[1024+32768];
+            char buffer[1024 + 32768*4];
             std::string ss;
             ss.reserve(100000);
 
@@ -261,18 +270,17 @@ int doswap(Parameters& par, bool isGeneralMode) {
                 while (dataSize > 0) {
                     if (isAlignmentResult) {
                         Matcher::result_t res = Matcher::parseAlignmentRecord(data, true);
-                        Matcher::result_t::swapResult(res, evaluer, hasBacktrace);
+                        Matcher::result_t::swapResult(res, *evaluer, hasBacktrace);
                         if (res.eval > par.evalThr) {
                             evalBreak = true;
-                            goto outer;
-                        }
-                        curRes.emplace_back(res);
+                        } else {
+                            curRes.emplace_back(res);
+			}
                     } else {
                         hit_t hit = QueryMatcher::parsePrefilterHit(data);
                         hit.diagonal = static_cast<unsigned short>(static_cast<short>(hit.diagonal) * -1);
                         curRes.emplace_back(hit.seqId, hit.prefScore, 0, 0, 0, -static_cast<float>(hit.prefScore), hit.diagonal, 0, 0, 0, 0, 0, 0, "");
                     }
-                    outer:
                     char *nextLine = Util::skipLine(data);
                     size_t lineLen = nextLine - data;
                     dataSize -= lineLen;
@@ -281,7 +289,7 @@ int doswap(Parameters& par, bool isGeneralMode) {
 
                 if (curRes.empty() == false) {
                     if (curRes.size() > 1) {
-                        std::sort(curRes.begin(), curRes.end(), Matcher::compareHits);
+                        SORT_SERIAL(curRes.begin(), curRes.end(), Matcher::compareHits);
                     }
 
                     for (size_t j = 0; j < curRes.size(); j++) {
@@ -300,7 +308,7 @@ int doswap(Parameters& par, bool isGeneralMode) {
                     }
 
                     resultWriter.writeData(ss.c_str(), ss.size(), i, thread_idx);
-                    ss = "";
+                    ss.clear();
 
                     curRes.clear();
                 } else if (evalBreak == true || targetElementExists[i] == 1) {
@@ -321,6 +329,14 @@ int doswap(Parameters& par, bool isGeneralMode) {
     }
     if(splits.size() > 1){
         DBWriter::mergeResults(parOutDbStr, parOutDbIndexStr, splitFileNames);
+    }
+
+    if (evaluer != NULL) {
+        delete evaluer;
+    }
+
+    if (subMat != NULL) {
+        delete subMat;
     }
 
     resultDbr.close();

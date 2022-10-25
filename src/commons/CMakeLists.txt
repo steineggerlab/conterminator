@@ -3,13 +3,15 @@ set(commons_header_files
         commons/AminoAcidLookupTables.h
         commons/BacktraceTranslator.h
         commons/ByteParser.h
+        commons/CSProfile.h
+        commons/CSProfile.cpp
         commons/Command.h
         commons/CommandCaller.h
         commons/Concat.h
-        commons/CpuInfo.h
         commons/DBConcat.h
         commons/DBReader.h
         commons/DBWriter.h
+        commons/IntervalArray.h
         commons/Debug.h
         commons/Domain.h
         commons/ExpressionParser.h
@@ -21,7 +23,9 @@ set(commons_header_files
         commons/KSeqWrapper.h
         commons/MathUtil.h
         commons/MemoryMapped.h
+        commons/MemoryTracker.h
         commons/MMseqsMPI.h
+        commons/MultiParam.h
         commons/NucleotideMatrix.h
         commons/Orf.h
         commons/ProfileStates.h
@@ -29,8 +33,8 @@ set(commons_header_files
         commons/Parameters.h
         commons/PatternCompiler.h
         commons/ScoreMatrix.h
-        commons/ScoreMatrixFile.h
         commons/Sequence.h
+        commons/StringBlock.h
         commons/SubstitutionMatrix.h
         commons/SubstitutionMatrixProfileStates.h
         commons/tantan.h
@@ -56,13 +60,14 @@ set(commons_source_files
         commons/HeaderSummarizer.cpp
         commons/KSeqWrapper.cpp
         commons/MemoryMapped.cpp
+        commons/MemoryTracker.cpp
         commons/MMseqsMPI.cpp
+        commons/MultiParam.cpp
         commons/NucleotideMatrix.cpp
         commons/Orf.cpp
         commons/Parameters.cpp
         commons/ProfileStates.cpp
         commons/LibraryReader.cpp
-        commons/ScoreMatrixFile.cpp
         commons/Sequence.cpp
         commons/SubstitutionMatrix.cpp
         commons/tantan.cpp
