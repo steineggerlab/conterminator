@@ -7,10 +7,10 @@ variables:
     regression: 1
 
 jobs:
-  - job: build_ubuntu_1604_userguide
-    displayName: Ubuntu 1604 Userguide
+  - job: build_ubuntu_2004_userguide
+    displayName: Ubuntu 2004 Userguide
     pool:
-      vmImage: 'Ubuntu-16.04'
+      vmImage: 'Ubuntu-20.04'
     steps:
       - checkout: "none"
       - script: |
@@ -26,10 +26,10 @@ jobs:
         inputs:
           targetPath: $(System.DefaultWorkingDirectory)/userguide.pdf
           artifactName: userguide
-  - job: build_ubuntu_1604
-    displayName: Ubuntu 1604 Conterminator
+  - job: build_ubuntu_2004
+    displayName: Ubuntu 2004 Conterminator
     pool:
-      vmImage: 'Ubuntu-16.04'
+      vmImage: 'Ubuntu-20.04'
     timeoutInMinutes: 120
     strategy:
       matrix:
@@ -89,10 +89,10 @@ jobs:
     displayName: Upload Artifacts
     condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
     pool:
-      vmImage: 'Ubuntu-16.04'
+      vmImage: 'Ubuntu-20.04'
     dependsOn:
-      - build_ubuntu_1604_userguide
-      - build_ubuntu_1604
+      - build_ubuntu_2004_userguide
+      - build_ubuntu_2004
     steps:
       - script: |
           cd "${BUILD_SOURCESDIRECTORY}"
