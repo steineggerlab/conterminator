@@ -11,12 +11,12 @@
 #include <cassert>
 #include <climits>
 
-int createindex(Parameters &par, std::string indexerModule, std::string flag) {
+int createindex(Parameters &par, const Command &command, const std::string &indexerModule, const std::string &flag) {
     bool sensitivity = false;
     // only set kmerScore  to INT_MAX if -s was used
     for (size_t i = 0; i < par.createindex.size(); i++) {
         if (par.createindex[i]->uniqid == par.PARAM_S.uniqid && par.createindex[i]->wasSet) {
-            par.kmerScore = INT_MAX;
+            par.kmerScore.values = INT_MAX;
             sensitivity=true;
             break;
         }
@@ -30,7 +30,7 @@ int createindex(Parameters &par, std::string indexerModule, std::string flag) {
     }
 
     std::string tmpDir = par.db2;
-    std::string hash = SSTR(par.hashParameter(par.filenames, par.createindex));
+    std::string hash = SSTR(par.hashParameter(command.databases, par.filenames, par.createindex));
     if (par.reuseLatest) {
         hash = FileUtil::getHashFromSymLink(tmpDir + "/latest");
     }
@@ -66,11 +66,25 @@ int createlinindex(int argc, const char **argv, const Command& command) {
     par.orfStartMode = 1;
     par.orfMinLength = 30;
     par.orfMaxLength = 32734;
-    par.kmerScore = 0; // extract all k-mers
+    par.kmerScore.values = 0; // extract all k-mers
     par.maskMode = 0;
     par.spacedKmer = false;
     // VTML has a slightly lower sensitivity in the regression test
-    par.seedScoringMatrixFile = ScoreMatrixFile("blosum62.out", "nucleotide.out");
+    par.seedScoringMatrixFile = MultiParam<NuclAA<std::string>>(NuclAA<std::string>("blosum62.out", "nucleotide.out"));
+
+    par.PARAM_COV_MODE.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_C.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_MIN_SEQ_ID.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    for (size_t i = 0; i < par.extractorfs.size(); i++) {
+        par.extractorfs[i]->addCategory(MMseqsParameter::COMMAND_EXPERT);
+    }
+    for (size_t i = 0; i < par.translatenucs.size(); i++) {
+        par.translatenucs[i]->addCategory(MMseqsParameter::COMMAND_EXPERT);
+    }
+    par.PARAM_COMPRESSED.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_THREADS.removeCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_V.removeCategory(MMseqsParameter::COMMAND_EXPERT);
+
     par.parseParameters(argc, argv, command, true, 0, 0);
     int dbType = FileUtil::parseDbType(par.db1.c_str());
     bool isNucl = Parameters::isEqualDbtype(dbType, Parameters::DBTYPE_NUCLEOTIDES);
@@ -86,7 +100,8 @@ int createlinindex(int argc, const char **argv, const Command& command) {
                             << "Please provide the parameter --search-type 2 (translated) or 3 (nucleotide)\n";
         return EXIT_FAILURE;
     }
-    return createindex(par, "kmerindexdb", (isNucl == false) ? "" : (par.searchType == Parameters::SEARCH_TYPE_TRANSLATED) ? "TRANSLATED" : "LIN_NUCL");
+    return createindex(par, command, "kmerindexdb", (isNucl == false) ? "" : (par.searchType == Parameters::SEARCH_TYPE_TRANSLATED||
+                                                                                           par.searchType == Parameters::SEARCH_TYPE_TRANS_NUCL_ALN) ? "TRANSLATED" : "LIN_NUCL");
 }
 
 int createindex(int argc, const char **argv, const Command& command) {
@@ -94,19 +109,39 @@ int createindex(int argc, const char **argv, const Command& command) {
     par.orfStartMode = 1;
     par.orfMinLength = 30;
     par.orfMaxLength = 32734;
-    par.kmerScore = 0; // extract all k-mers
+    par.kmerScore.values = 0; // extract all k-mers
     par.sensitivity = 7.5;
     par.maskMode = 1;
+
+    par.PARAM_COV_MODE.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_C.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_MIN_SEQ_ID.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_MAX_SEQS.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_SPLIT.removeCategory(MMseqsParameter::COMMAND_EXPERT);
+    for (size_t i = 0; i < par.splitsequence.size(); i++) {
+        par.splitsequence[i]->addCategory(MMseqsParameter::COMMAND_EXPERT);
+    }
+    for (size_t i = 0; i < par.extractorfs.size(); i++) {
+        par.extractorfs[i]->addCategory(MMseqsParameter::COMMAND_EXPERT);
+    }
+    for (size_t i = 0; i < par.splitsequence.size(); i++) {
+        par.splitsequence[i]->addCategory(MMseqsParameter::COMMAND_EXPERT);
+    }
+    for (size_t i = 0; i < par.translatenucs.size(); i++) {
+        par.translatenucs[i]->addCategory(MMseqsParameter::COMMAND_EXPERT);
+    }
+    par.PARAM_COMPRESSED.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_THREADS.removeCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_V.removeCategory(MMseqsParameter::COMMAND_EXPERT);
+
     par.parseParameters(argc, argv, command, true, 0, 0);
 
     int dbType = FileUtil::parseDbType(par.db1.c_str());
     bool isNucl = Parameters::isEqualDbtype(dbType, Parameters::DBTYPE_NUCLEOTIDES);
 
-    if(par.PARAM_STRAND.wasSet == false){
+    if (par.PARAM_STRAND.wasSet == false) {
         par.strand = 1;
     }
-    par.overrideParameterDescription((Command &) command, par.PARAM_MASK_RESIDUES.uniqid, "0: w/o low complexity masking, 1: with low complexity masking, 2: add both masked and unmasked sequences to index", "^[0-2]{1}", par.PARAM_MASK_RESIDUES.category);
-
     if(isNucl && par.searchType == Parameters::SEARCH_TYPE_NUCLEOTIDES ){
         if ( par.PARAM_K.wasSet == false) {
             par.kmerSize = 15;
@@ -137,5 +172,6 @@ int createindex(int argc, const char **argv, const Command& command) {
                             << "Please provide the parameter --search-type 2 (translated) or 3 (nucleotide)\n";
         return EXIT_FAILURE;
     }
-    return createindex(par, "indexdb",  (isNucl == false) ? "" : (par.searchType == Parameters::SEARCH_TYPE_TRANSLATED) ? "TRANSLATED" : "NUCL");
+    return createindex(par, command, "indexdb",  (isNucl == false) ? "" : (par.searchType == Parameters::SEARCH_TYPE_TRANSLATED||
+                                                                  par.searchType == Parameters::SEARCH_TYPE_TRANS_NUCL_ALN) ? "TRANSLATED" : "NUCL");
 }

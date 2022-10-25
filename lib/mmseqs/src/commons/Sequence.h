@@ -1,6 +1,6 @@
 #ifndef SEQUENCE_H
 #define SEQUENCE_H
-// Written by Martin Steinegger & Maria Hauser mhauser@genzentrum.lmu.de, Martin Steinegger martin.steinegger@mpibpc.mpg.de
+// Written by Martin Steinegger & Maria Hauser mhauser@genzentrum.lmu.de, Martin Steinegger martin.steinegger@snu.ac.kr
 //
 // Represents a database sequence object, holds its representation in the int array form.
 //
@@ -8,12 +8,12 @@
 #include "MathUtil.h"
 #include "BaseMatrix.h"
 #include "Parameters.h"
+#include "ScoreMatrix.h"
 
 #include <cstdint>
 #include <cstddef>
 #include <utility>
-
-struct ScoreMatrix;
+#include <simd/simd.h>
 
 const int8_t seed_4[]        = {1, 1, 1, 1};
 const int8_t spaced_seed_4[] = {1, 1, 1, 0, 1};
@@ -75,8 +75,8 @@ const int8_t spaced_seed_30[] = {1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1,
 
 class Sequence {
 public:
-    Sequence(size_t maxLen, int seqType, const BaseMatrix *subMat, 
-             const unsigned int kmerSize, const bool spaced, const bool aaBiasCorrection, bool shouldAddPC = true, const std::string& spacedKmerPattern = "");
+    Sequence(size_t maxLen, int seqType, const BaseMatrix *subMat,  const unsigned int kmerSize, const bool spaced, const bool aaBiasCorrection,
+             bool shouldAddPC = true, const std::string& userSpacedKmerPattern = "");
     ~Sequence();
 
     // Map char -> int
@@ -86,18 +86,16 @@ public:
     void mapSequence(size_t id, unsigned int dbKey, std::pair<const unsigned char *, const unsigned int> data);
 
     // map profile HMM, *data points to start position of Profile
-    void mapProfile(const char *profileData, bool mapScores,  unsigned int seqLen);
-
-    // mixture of library and profile prob
-    template <int T>
-    void mapProfileState(const char *profileState, unsigned int seqLen);
-
-    // map the profile state sequence
-    void mapProfileStateSequence(const char *profileStateSeq, unsigned int seqLen);
+    void mapProfile(const char *profileData, unsigned int seqLen);
 
     // checks if there is still a k-mer left
     bool hasNextKmer() {
         return (((currItPos + 1) + this->spacedPatternSize) <= this->L);
+    }
+
+    // k-mer contains x, is only field aftter nextKmer
+    inline bool kmerContainsX(){
+        return kmerHasX != 0;
     }
 
     // returns next k-mer
@@ -126,6 +124,45 @@ public:
                 kmerWindow[4] = posToRead[aaPosInSpacedPattern[4]];
                 kmerWindow[5] = posToRead[aaPosInSpacedPattern[5]];
                 kmerWindow[6] = posToRead[aaPosInSpacedPattern[6]];
+                break;
+            case 10:
+                kmerWindow[0] = posToRead[aaPosInSpacedPattern[0]];
+                kmerWindow[1] = posToRead[aaPosInSpacedPattern[1]];
+                kmerWindow[2] = posToRead[aaPosInSpacedPattern[2]];
+                kmerWindow[3] = posToRead[aaPosInSpacedPattern[3]];
+                kmerWindow[4] = posToRead[aaPosInSpacedPattern[4]];
+                kmerWindow[5] = posToRead[aaPosInSpacedPattern[5]];
+                kmerWindow[6] = posToRead[aaPosInSpacedPattern[6]];
+                kmerWindow[7] = posToRead[aaPosInSpacedPattern[7]];
+                kmerWindow[8] = posToRead[aaPosInSpacedPattern[8]];
+                kmerWindow[9] = posToRead[aaPosInSpacedPattern[9]];
+                break;
+            case 11:
+                kmerWindow[0] = posToRead[aaPosInSpacedPattern[0]];
+                kmerWindow[1] = posToRead[aaPosInSpacedPattern[1]];
+                kmerWindow[2] = posToRead[aaPosInSpacedPattern[2]];
+                kmerWindow[3] = posToRead[aaPosInSpacedPattern[3]];
+                kmerWindow[4] = posToRead[aaPosInSpacedPattern[4]];
+                kmerWindow[5] = posToRead[aaPosInSpacedPattern[5]];
+                kmerWindow[6] = posToRead[aaPosInSpacedPattern[6]];
+                kmerWindow[7] = posToRead[aaPosInSpacedPattern[7]];
+                kmerWindow[8] = posToRead[aaPosInSpacedPattern[8]];
+                kmerWindow[9] = posToRead[aaPosInSpacedPattern[9]];
+                kmerWindow[10] = posToRead[aaPosInSpacedPattern[10]];
+                break;
+            case 12:
+                kmerWindow[0] = posToRead[aaPosInSpacedPattern[0]];
+                kmerWindow[1] = posToRead[aaPosInSpacedPattern[1]];
+                kmerWindow[2] = posToRead[aaPosInSpacedPattern[2]];
+                kmerWindow[3] = posToRead[aaPosInSpacedPattern[3]];
+                kmerWindow[4] = posToRead[aaPosInSpacedPattern[4]];
+                kmerWindow[5] = posToRead[aaPosInSpacedPattern[5]];
+                kmerWindow[6] = posToRead[aaPosInSpacedPattern[6]];
+                kmerWindow[7] = posToRead[aaPosInSpacedPattern[7]];
+                kmerWindow[8] = posToRead[aaPosInSpacedPattern[8]];
+                kmerWindow[9] = posToRead[aaPosInSpacedPattern[9]];
+                kmerWindow[10] = posToRead[aaPosInSpacedPattern[10]];
+                kmerWindow[11] = posToRead[aaPosInSpacedPattern[11]];
                 break;
             case 13:
                 kmerWindow[0] = posToRead[aaPosInSpacedPattern[0]];
@@ -357,12 +394,17 @@ public:
                 }
                 break;
         }
+        kmerHasX = 0;
 
-        if (Parameters::isEqualDbtype(seqType, Parameters::DBTYPE_HMM_PROFILE) ||
-            Parameters::isEqualDbtype(seqType, Parameters::DBTYPE_PROFILE_STATE_PROFILE)) {
+        const simd_int xChar = simdi8_set(subMat->aa2num[static_cast<int>('X')]);
+        for(size_t i = 0; i < simdKmerRegisterCnt; i++){
+            simd_int kmer = simdi_load((((simd_int *) kmerWindow) + i));
+            kmerHasX |= static_cast<unsigned int>(simdi8_movemask(simdi8_eq(kmer, xChar)));
+        }
+        if (Parameters::isEqualDbtype(seqType, Parameters::DBTYPE_HMM_PROFILE)) {
             nextProfileKmer();
             for (unsigned int i = 0; i < this->kmerSize; i++) {
-                    kmerWindow[i] = 0;
+                kmerWindow[i] = 0;
             }
             return kmerWindow;
         }
@@ -375,8 +417,8 @@ public:
 
     void print(); // for debugging
 
-    static void extractProfileSequence(const char* data, const BaseMatrix &submat, std::string &result);
-    static void extractProfileConsensus(const char* data, const BaseMatrix &submat, std::string &result);
+    static void extractProfileSequence(const char* data, size_t dataSize, const BaseMatrix &submat, std::string &result);
+    static void extractProfileConsensus(const char* data, size_t dataSize, const BaseMatrix &submat, std::string &result);
 
     int getId() const { return id; }
 
@@ -389,14 +431,12 @@ public:
     size_t getMaxLen() { return maxLen; }
     unsigned int getKmerSize(){ return kmerSize; }
     bool isSpaced() { return spaced; }
-    const std::string& getSpacedKmerPattern() { return spacedKmerPattern; }
 
     // reverse the sequence for the match statistics calculation
     void reverse();
 
-
     // submat
-    BaseMatrix * subMat;
+    BaseMatrix *subMat;
 
     // length of sequence
     int L;
@@ -410,18 +450,22 @@ public:
     // Contains profile information
     short           *profile_score;
     unsigned int    *profile_index;
-    float           *profile;
     float           *neffM;
+    uint8_t         *gDel;
+    uint8_t         *gIns;
     float           *pseudocountsWeight;
-    // (PROFILE_AA_SIZE / SIMD_SIZE) + 1 * SIMD_SIZE
+    // const size_t PROFILE_ROW_SIZE = (((size_t) PROFILE_AA_SIZE / (VECSIZE_INT * 4)) + 1) * (VECSIZE_INT * 4);
     size_t profile_row_size;
-
     static const size_t PROFILE_AA_SIZE = 20;
-    // 20 AA, 1 query, 1 consensus, 2 for Neff M,
-    static const size_t PROFILE_READIN_SIZE = 23;
+    static const size_t PROFILE_CONSENSUS = 21;     // new
+    static const size_t PROFILE_NEFF = 22;          // new
+    static const size_t PROFILE_GAP_DEL = 23;       // new
+    static const size_t PROFILE_GAP_INS = 24;       // new
+    // 20 AA, 1 query, 1 consensus, 1 Neff M, 2 gap penalties
+    static const size_t PROFILE_READIN_SIZE = 25;
     ScoreMatrix **profile_matrix;
     // Memory layout of this profile is qL * AA
-    //   Query lenght
+    //   Query length
     // A  -1  -3  -2  -1  -4  -2  -2  -3  -1  -3  -2  -2   7  -1  -2  -1  -1  -2  -5  -3
     // C  -1  -4   2   5  -3  -2   0  -3   1  -3  -2   0  -1   2   0   0  -1  -3  -4  -2
     // ...
@@ -430,21 +474,25 @@ public:
 
     std::pair<const char *, unsigned int> getSpacedPattern(bool spaced, unsigned int kmerSize);
 
-    std::pair<const char *, unsigned int> parseSpacedPattern(unsigned int kmerSize, bool spaced, const std::string& spacedKmerPattern);    
+    std::pair<const char *, unsigned int> parseSpacedPattern(unsigned int kmerSize, bool spaced, const std::string& spacedKmerPattern);
 
     const unsigned char *getAAPosInSpacedPattern() { return aaPosInSpacedPattern; }
 
     void printPSSM();
 
-    void printProfileStatePSSM();
+    int8_t const* getAlignmentProfile() const {
+        return profile_for_alignment;
+    }
 
-    void printProfile();
+    void printProfile() const;
 
-    int8_t const * getAlignmentProfile()const;
+    int getSequenceType() const {
+        return seqType;
+    }
 
-    int getSequenceType()const;
-
-    unsigned int getEffectiveKmerSize();
+    unsigned int getEffectiveKmerSize() {
+        return spacedPatternSize;
+    }
 
     static unsigned char scoreMask(float prob) {
         unsigned char charProb = MathUtil::convertFloatToChar(prob);
@@ -462,7 +510,6 @@ public:
         return MathUtil::flog2(proba / pBack);
     }
 
-
     static float scoreToProba(short score, double pBack, double bitFactor, double scoreBias) {
         if (score == -127) {
             return 0.0;
@@ -472,14 +519,19 @@ public:
         return MathUtil::fpow2((float)(dblScore - scoreBias) / bitFactor) * pBack;
     }
 
-    const float *getProfile();
-
     const char *getSeqData() {
         return seqData;
     }
 
+    const std::string &getUserSpacedKmerPattern() const {
+        return userSpacedKmerPattern;
+    }
+
 private:
     void mapSequence(const char *seq, unsigned int dataLen);
+    // read next kmer profile in profile_matrix
+    void nextProfileKmer();
+
     size_t id;
     unsigned int dbKey;
     const char *seqData;
@@ -493,9 +545,6 @@ private:
     // maximum possible length of sequence
     size_t maxLen;
 
-    // read next kmer profile in profile_matrix
-    void nextProfileKmer();
-
     // size of Pattern
     int spacedPatternSize;
 
@@ -505,8 +554,14 @@ private:
     // kmer Size
     unsigned int kmerSize;
 
+    // simd kmer size
+    unsigned int simdKmerRegisterCnt;
+
     // sequence window will be filled by newxtKmer (needed for spaced patterns)
     unsigned char *kmerWindow;
+
+    // set if kmer contains X
+    unsigned int kmerHasX;
 
     // stores position of residues in sequence
     unsigned char *aaPosInSpacedPattern;
@@ -519,11 +574,11 @@ private:
 
     // spaced pattern
     bool spaced;
-    
+
     // should add pseudo-counts when loading the profile?
     bool shouldAddPC;
 
-    //spaced kmer pattern
-    const std::string spacedKmerPattern;
+    // user kmer pattern
+    std::string userSpacedKmerPattern;
 };
 #endif

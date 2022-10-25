@@ -7,7 +7,7 @@
 #include "ReducedMatrix.h"
 #include "DistanceCalculator.h"
 #include "Orf.h"
-#include "omptl/omptl_algorithm"
+#include "FastSort.h"
 
 #ifdef OPENMP
 #include <omp.h>
@@ -15,7 +15,7 @@
 
 int clusthash(int argc, const char **argv, const Command &command) {
     Parameters &par = Parameters::getInstance();
-    par.alphabetSize = Parameters::CLUST_HASH_DEFAULT_ALPH_SIZE;
+    par.alphabetSize = MultiParam<NuclAA<int>>(NuclAA<int>(Parameters::CLUST_HASH_DEFAULT_ALPH_SIZE,5));
     par.seqIdThr = (float)Parameters::CLUST_HASH_DEFAULT_MIN_SEQ_ID/100.0f;
     par.parseParameters(argc, argv, command, true, 0, 0);
 
@@ -28,8 +28,8 @@ int clusthash(int argc, const char **argv, const Command &command) {
     const bool isNuclInput = Parameters::isEqualDbtype(reader.getDbtype(), Parameters::DBTYPE_NUCLEOTIDES);
     BaseMatrix *subMat = NULL;
     if (isNuclInput == false) {
-        SubstitutionMatrix sMat(par.scoringMatrixFile.aminoacids, 2.0, -0.2);
-        subMat = new ReducedMatrix(sMat.probMatrix, sMat.subMatrixPseudoCounts, sMat.aa2num, sMat.num2aa, sMat.alphabetSize, par.alphabetSize, 2.0);
+        SubstitutionMatrix sMat(par.scoringMatrixFile.values.aminoacid().c_str(), 2.0, -0.2);
+        subMat = new ReducedMatrix(sMat.probMatrix, sMat.subMatrixPseudoCounts, sMat.aa2num, sMat.num2aa, sMat.alphabetSize, par.alphabetSize.values.aminoacid(), 2.0);
     }
 
     DBWriter writer(par.db2.c_str(), par.db2Index.c_str(), par.threads, par.compressed, Parameters::DBTYPE_ALIGNMENT_RES);
@@ -77,7 +77,7 @@ int clusthash(int argc, const char **argv, const Command &command) {
     }
 
     // sort by hash and set up the pointer for parallel processing
-    omptl::sort(hashSeqPair, hashSeqPair + reader.getSize());
+    SORT_PARALLEL(hashSeqPair, hashSeqPair + reader.getSize());
 
     size_t uniqHashes = 1;
     size_t prevHash = hashSeqPair[0].first;

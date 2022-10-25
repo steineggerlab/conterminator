@@ -11,6 +11,7 @@
 #include "QueryMatcher.h"
 #include "NucleotideMatrix.h"
 #include "IndexReader.h"
+#include "FastSort.h"
 
 #ifdef OPENMP
 #include <omp.h>
@@ -51,7 +52,7 @@ int doRescorediagonal(Parameters &par,
     DBReader<unsigned int> * qdbr = NULL;
     DBReader<unsigned int> * tdbr = NULL;
     bool touch = (par.preloadMode != Parameters::PRELOAD_MODE_MMAP);
-    IndexReader * tDbrIdx = new IndexReader(par.db2, par.threads, IndexReader::SEQUENCES, (touch) ? (IndexReader::PRELOAD_INDEX | IndexReader::PRELOAD_DATA) : 0 );
+    IndexReader * tDbrIdx = new IndexReader(par.db2, par.threads, IndexReader::SEQUENCES,   (touch) ? (IndexReader::PRELOAD_INDEX | IndexReader::PRELOAD_DATA) : 0 );
     int querySeqType = 0;
     tdbr = tDbrIdx->sequenceReader;
     int targetSeqType = tDbrIdx->getDbtype();
@@ -81,10 +82,10 @@ int doRescorediagonal(Parameters &par,
 
     BaseMatrix *subMat;
     if (Parameters::isEqualDbtype(querySeqType, Parameters::DBTYPE_NUCLEOTIDES)) {
-        subMat = new NucleotideMatrix(par.scoringMatrixFile.nucleotides, 1.0, 0.0);
+        subMat = new NucleotideMatrix(par.scoringMatrixFile.values.nucleotide().c_str(), 1.0, 0.0);
     } else {
         // keep score bias at 0.0 (improved ROC)
-        subMat = new SubstitutionMatrix(par.scoringMatrixFile.aminoacids, 2.0, 0.0);
+        subMat = new SubstitutionMatrix(par.scoringMatrixFile.values.aminoacid().c_str(), 2.0, 0.0);
     }
 
     SubstitutionMatrix::FastMatrix fastMatrix = SubstitutionMatrix::createAsciiSubMat(*subMat);
@@ -110,8 +111,12 @@ int doRescorediagonal(Parameters &par,
     if (totalMemory > resultReader.getTotalDataSize()) {
         flushSize = resultReader.getSize();
     }
-    size_t iterations = static_cast<int>(ceil(static_cast<double>(dbSize) / static_cast<double>(flushSize)));
-
+    
+    size_t iterations = 1;
+    if(flushSize > 0){
+        iterations = static_cast<int>(ceil(static_cast<double>(dbSize) / static_cast<double>(flushSize)));
+    }
+    
     for (size_t i = 0; i < iterations; i++) {
         size_t start = dbFrom + (i * flushSize);
         size_t bucketSize = std::min(dbSize - (i * flushSize), flushSize);
@@ -123,7 +128,7 @@ int doRescorediagonal(Parameters &par,
 #ifdef OPENMP
             thread_idx = (unsigned int) omp_get_thread_num();
 #endif
-            char buffer[1024 + 32768];
+            char buffer[1024 + 32768*4];
             std::string resultBuffer;
             resultBuffer.reserve(1000000);
             std::string queryBuffer;
@@ -161,7 +166,7 @@ int doRescorediagonal(Parameters &par,
                         queryLen = origQueryLen*2;
                     }
 
-                    if(queryLen > queryRevSeqLen){
+                    if(reversePrefilterResult == true && queryLen > queryRevSeqLen){
                         queryRevSeq = static_cast<char*>(realloc(queryRevSeq, queryLen+1));
                         queryRevSeqLen = queryLen+1;
                     }
@@ -241,13 +246,13 @@ int doRescorediagonal(Parameters &par,
                         alnLen = diagonalLen;
                     } else if (par.rescoreMode == Parameters::RESCORE_MODE_SUBSTITUTION ||
                                par.rescoreMode == Parameters::RESCORE_MODE_ALIGNMENT ||
-                               par.rescoreMode == Parameters::RESCORE_MODE_GLOBAL_ALIGNMENT ||
+                               par.rescoreMode == Parameters::RESCORE_MODE_END_TO_END_ALIGNMENT ||
                                par.rescoreMode == Parameters::RESCORE_MODE_WINDOW_QUALITY_ALIGNMENT) {
                         evalue = evaluer.computeEvalue(distance, origQueryLen);
                         bitScore = static_cast<int>(evaluer.computeBitScore(distance) + 0.5);
 
-                        if (par.rescoreMode == Parameters::RESCORE_MODE_ALIGNMENT||
-                            par.rescoreMode == Parameters::RESCORE_MODE_GLOBAL_ALIGNMENT ||
+                        if (par.rescoreMode == Parameters::RESCORE_MODE_ALIGNMENT ||
+                            par.rescoreMode == Parameters::RESCORE_MODE_END_TO_END_ALIGNMENT ||
                             par.rescoreMode == Parameters::RESCORE_MODE_WINDOW_QUALITY_ALIGNMENT) {
                             alnLen = (alignment.endPos - alignment.startPos) + 1;
                             int qStartPos, qEndPos, dbStartPos, dbEndPos;
@@ -307,20 +312,21 @@ int doRescorediagonal(Parameters &par,
                     // --filter-hits
                     bool hasToFilter = (par.filterHits == true && currScorePerCol >= scorePerColThr);
                     if (isIdentity || hasToFilter || (hasAlnLen && hasCov && hasSeqId && hasEvalue)) {
-                        if (par.rescoreMode == Parameters::RESCORE_MODE_ALIGNMENT||
-                            par.rescoreMode == Parameters::RESCORE_MODE_GLOBAL_ALIGNMENT ||
+                        if (par.rescoreMode == Parameters::RESCORE_MODE_ALIGNMENT ||
+                            par.rescoreMode == Parameters::RESCORE_MODE_END_TO_END_ALIGNMENT ||
                             par.rescoreMode == Parameters::RESCORE_MODE_WINDOW_QUALITY_ALIGNMENT) {
                             alnResults.emplace_back(result);
                         } else if (par.rescoreMode == Parameters::RESCORE_MODE_SUBSTITUTION) {
                             hit_t hit;
                             hit.seqId = results[entryIdx].seqId;
-                            hit.prefScore = bitScore;
+                            hit.prefScore = (isReverse) ? -bitScore : bitScore;
                             hit.diagonal = diagonal;
                             shortResults.emplace_back(hit);
                         } else {
                             hit_t hit;
                             hit.seqId = results[entryIdx].seqId;
                             hit.prefScore = 100 * seqId;
+                            hit.prefScore = (isReverse) ? -hit.prefScore : hit.prefScore;
                             hit.diagonal = diagonal;
                             shortResults.emplace_back(hit);
                         }
@@ -328,7 +334,7 @@ int doRescorediagonal(Parameters &par,
                 }
 
                 if (par.sortResults > 0 && alnResults.size() > 1) {
-                    std::sort(alnResults.begin(), alnResults.end(), Matcher::compareHits);
+                    SORT_SERIAL(alnResults.begin(), alnResults.end(), Matcher::compareHits);
                 }
                 for (size_t i = 0; i < alnResults.size(); ++i) {
                     size_t len = Matcher::resultToBuffer(buffer, alnResults[i], par.addBacktrace, false);
@@ -336,11 +342,10 @@ int doRescorediagonal(Parameters &par,
                 }
 
                 if (par.sortResults > 0 && shortResults.size() > 1) {
-                    std::sort(shortResults.begin(), shortResults.end(), hit_t::compareHitsByScoreAndId);
+                    SORT_SERIAL(shortResults.begin(), shortResults.end(), hit_t::compareHitsByScoreAndId);
                 }
                 for (size_t i = 0; i < shortResults.size(); ++i) {
-                    size_t len = snprintf(buffer, 100, "%u\t%d\t%d\n", shortResults[i].seqId, shortResults[i].prefScore,
-                                          shortResults[i].diagonal);
+                    size_t len = QueryMatcher::prefilterHitToBuffer(buffer, shortResults[i]);
                     resultBuffer.append(buffer, len);
                 }
 
@@ -378,17 +383,11 @@ int rescorediagonal(int argc, const char **argv, const Command &command) {
     Parameters &par = Parameters::getInstance();
     par.parseParameters(argc, argv, command, true, 0, 0);
 
-    if (par.wrappedScoring && par.rescoreMode != Parameters::RESCORE_MODE_HAMMING) {
-        Debug(Debug::ERROR) << "ERROR: wrapped scoring is only allowed with RESCORE_MODE_HAMMING\n";
-        return EXIT_FAILURE;
-    }
-
-
     DBReader<unsigned int> resultReader(par.db3.c_str(), par.db3Index.c_str(), par.threads, DBReader<unsigned int>::USE_INDEX|DBReader<unsigned int>::USE_DATA);
     resultReader.open(DBReader<unsigned int>::LINEAR_ACCCESS);
-    int dbtype = Parameters::DBTYPE_PREFILTER_RES;
+    int dbtype = resultReader.getDbtype(); // this is DBTYPE_PREFILTER_RES || DBTYPE_PREFILTER_REV_RES
     if(par.rescoreMode == Parameters::RESCORE_MODE_ALIGNMENT ||
-       par.rescoreMode == Parameters::RESCORE_MODE_GLOBAL_ALIGNMENT ||
+       par.rescoreMode == Parameters::RESCORE_MODE_END_TO_END_ALIGNMENT ||
        par.rescoreMode == Parameters::RESCORE_MODE_WINDOW_QUALITY_ALIGNMENT){
         dbtype = Parameters::DBTYPE_ALIGNMENT_RES;
     }

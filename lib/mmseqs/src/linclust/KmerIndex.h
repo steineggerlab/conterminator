@@ -1,11 +1,10 @@
 #ifndef MMSEQS_KMERINDEX_H
 #define MMSEQS_KMERINDEX_H
 
-// Written by Martin Steinegger martin.steinegger@mpibpc.mpg.de
+// Written by Martin Steinegger martin.steinegger@snu.ac.kr
 // storage for k-mers
 #include "MathUtil.h"
 #include <string>
-#include <iostream>
 #include <algorithm>
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -149,7 +148,7 @@ public:
         }
         entries[writingPosition].id = id;
         entries[writingPosition].kmerOffset = kmer - kmerStartRange;
-        entries[writingPosition].kmerOffset = (isReverse) ? BIT_SET(15, entries[writingPosition].kmerOffset) :  entries[writingPosition].kmerOffset;
+        entries[writingPosition].kmerOffset = (isReverse) ? BIT_SET(entries[writingPosition].kmerOffset, 15) :  entries[writingPosition].kmerOffset;
         entries[writingPosition].pos = pos;
         entries[writingPosition].seqLen = seqLen;
         writingPosition++;
@@ -184,7 +183,7 @@ public:
         this->indexGridSize = MathUtil::ceilIntDivision( MathUtil::ipow<size_t>(alphabetSize, kmerSize), gridResolution );
         this->entryOffsets = (size_t *) entriesOffetData;
 #if HAVE_POSIX_MADVISE
-        if (posix_madvise (entriesData, entryCount* sizeof(KmerEntryRelative), POSIX_MADV_SEQUENTIAL) != 0){
+        if (entryCount > 0 && posix_madvise (entriesData, entryCount* sizeof(KmerEntryRelative), POSIX_MADV_SEQUENTIAL) != 0){
             Debug(Debug::ERROR) << "KmerIndex posix_madvise returned an error\n";
         }
 #endif

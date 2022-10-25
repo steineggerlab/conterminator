@@ -45,8 +45,8 @@ int extractorfs(int argc, const char **argv, const Command& command) {
     const char newline = '\n';
     Debug::Progress progress(reader.getSize());
     TranslateNucl translateNucl(static_cast<TranslateNucl::GenCode>(par.translationTable));
-
-#pragma omp parallel
+    int wrongSeqCnt = 0;
+#pragma omp parallel reduction(+:wrongSeqCnt)
     {
         Orf orf(par.translationTable, par.useAllTableStarts);
         int thread_idx = 0;
@@ -60,6 +60,7 @@ int extractorfs(int argc, const char **argv, const Command& command) {
             queryFrom = 0;
         }
         char* aa = new char[par.maxSeqLen + 3 + 1];
+        char buffer[1024];
 
         std::vector<Orf::SequenceLocation> res;
         res.reserve(1000);
@@ -70,7 +71,7 @@ int extractorfs(int argc, const char **argv, const Command& command) {
             const char* data = reader.getData(i, thread_idx);
             size_t sequenceLength = reader.getSeqLen(i);
             if(!orf.setSequence(data, sequenceLength)) {
-                Debug(Debug::WARNING) << "Invalid sequence with index " << i << "!\n";
+                wrongSeqCnt++;
                 continue;
             }
 
@@ -86,8 +87,6 @@ int extractorfs(int argc, const char **argv, const Command& command) {
                 if (par.contigEndMode   < 2 && (loc.hasIncompleteEnd   == par.contigEndMode)) {
                     continue;
                 }
-
-                char buffer[LINE_MAX];
 
                 std::pair<const char*, size_t> sequence = orf.getSequence(loc);
                 size_t fromPos = loc.from;
@@ -132,6 +131,12 @@ int extractorfs(int argc, const char **argv, const Command& command) {
     sequenceWriter.close(true);
     headerReader.close();
     reader.close();
+    if (wrongSeqCnt == 1) {
+        Debug(Debug::WARNING) << "1 input sequence was shorter than 3 nucleotides\n";
+    } else if (wrongSeqCnt > 1) {
+        Debug(Debug::WARNING) << wrongSeqCnt << " input sequences were shorter than 3 nucleotides\n";
+    }
+
     // make identifiers stable
 #pragma omp parallel
     {

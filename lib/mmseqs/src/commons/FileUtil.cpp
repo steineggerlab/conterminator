@@ -2,18 +2,22 @@
 #include "Util.h"
 #include "Debug.h"
 
+#define SIMDE_ENABLE_NATIVE_ALIASES
+#include <simde/simde-common.h>
+
 #include <cstddef>
 #include <cstring>
 #include <climits>
 #include <algorithm>
-#include <sys/stat.h>
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
+
+#include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <sys/types.h>
-#include <dirent.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 
 bool FileUtil::fileExists(const char* fileName) {
     struct stat st;
@@ -75,14 +79,16 @@ FILE* FileUtil::openFileOrDie(const char * fileName, const char * mode, bool sho
     return file;
 }
 size_t FileUtil::countLines(const char* name) {
-    FILE *fp=FileUtil::openFileOrDie(name, "r", true);
+    FILE *fp = FileUtil::openFileOrDie(name, "r", true);
     size_t cnt = 0;
-    while(!feof(fp))
-    {
+    while (!feof(fp)) {
         char ch = fgetc(fp);
         cnt += (ch == '\n') ? 1 : 0;
     }
-    fclose(fp);
+    if (fclose(fp) != 0) {
+        Debug(Debug::ERROR) << "Cannot close file " << name << "\n";
+        EXIT(EXIT_FAILURE);
+    }
     return cnt;
 }
 
@@ -132,7 +138,7 @@ size_t FileUtil::getFreeSpace(const char *path) {
     struct statvfs stat;
     if (statvfs(path, &stat) != 0) {
         // error happens, just quits here
-        return -1;
+        return SIZE_MAX;
     }
 
     // the available size is f_bsize * f_bavail
@@ -176,26 +182,51 @@ void FileUtil::symlinkAlias(const std::string &file, const std::string &alias) {
     std::string base = baseName(p);
     free(p);
 
-    DIR *dir = opendir(path.c_str());
-    if (dir == NULL) {
-        Debug(Debug::ERROR) << "Error opening directory " << path << "!\n";
-        EXIT(EXIT_FAILURE);
-    }
-
     std::string pathToAlias = (path + "/" + alias);
     if (symlinkExists(pathToAlias) == true){
         FileUtil::remove(pathToAlias.c_str());
     }
-
-    if (symlinkat(base.c_str(), dirfd(dir), alias.c_str()) != 0) {
+    // symlinkat is not available in Conda macOS
+    // Conda uses the macOS 10.9 SDK, and symlinkat was introduced in 10.10
+    // We emulate symlinkat by manipulating the CWD instead
+    std::string oldWd = FileUtil::getCurrentWorkingDirectory();
+    if (chdir(path.c_str()) != 0) {
+        Debug(Debug::ERROR) << "Could not change working directory to " << path << "\n";
+        EXIT(EXIT_FAILURE);
+    }
+    if (symlink(base.c_str(), alias.c_str()) != 0) {
         Debug(Debug::ERROR) << "Could not create symlink of " << file << "!\n";
         EXIT(EXIT_FAILURE);
     }
-
-    if (closedir(dir) != 0) {
-        Debug(Debug::ERROR) << "Error closing directory " << path << "!\n";
+    if (chdir(oldWd.c_str()) != 0) {
+        Debug(Debug::ERROR) << "Could not change working directory to " << oldWd << "\n";
         EXIT(EXIT_FAILURE);
     }
+}
+
+std::string FileUtil::getCurrentWorkingDirectory() {
+    // CWD can be larger than PATH_MAX and allocating enough memory is somewhat tricky
+    char* wd = NULL;
+#ifdef PATH_MAX
+    size_t bufferSize = PATH_MAX;
+#else
+    size_t bufferSize = 1024;
+#endif
+    do {
+        if (wd != NULL) {
+            free(wd);
+            bufferSize *= 2;
+        }
+        errno = 0;
+        wd = getcwd(NULL, bufferSize);
+        if (wd == NULL && errno != ERANGE && errno != 0) {
+            Debug(Debug::ERROR) << "Could not get current working directory\n";
+            EXIT(EXIT_FAILURE);
+        }
+    } while (wd == NULL && errno == ERANGE);
+    std::string cwd(wd);
+    free(wd);
+    return cwd;
 }
 
 void FileUtil::symlinkAbs(const std::string &target, const std::string &link) {
@@ -275,6 +306,10 @@ void FileUtil::copyFile(const char *src, const char *dst) {
     close(dest);
 }
 
+void FileUtil::copyFile(const std::string& src, const std::string& dst) {
+    copyFile(src.c_str(), dst.c_str());
+}
+
 FILE * FileUtil::openAndDelete(const char *fileName, const char *mode) {
     if(FileUtil::fileExists(fileName) == true){
         if(FileUtil::directoryExists(fileName)){
@@ -334,8 +369,14 @@ void FileUtil::move(const char * src, const char * dst) {
         EXIT(EXIT_FAILURE);
     }
     bool sameFileSystem = (srcDirInfo.st_dev == srcFileInfo.st_dev);
-    fclose(srcFile);
-    fclose(dstDir);
+    if (fclose(srcFile) != 0) {
+        Debug(Debug::ERROR) << "Cannot close file " << src << "\n";
+        EXIT(EXIT_FAILURE);
+    }
+    if (fclose(dstDir) != 0) {
+        Debug(Debug::ERROR) << "Cannot close directory " << dirName << "\n";
+        EXIT(EXIT_FAILURE);
+    }
     if(sameFileSystem){
         if (std::rename(src, dst) != 0){
             Debug(Debug::ERROR) << "Could not copy file " << src << " to " << dst << "!\n";
@@ -370,7 +411,13 @@ int FileUtil::parseDbType(const char *name) {
         Debug(Debug::ERROR) << "Could not read " << dbTypeFile << "!\n";
         EXIT(EXIT_FAILURE);
     }
-    fclose(file);
+    if (fclose(file) != 0) {
+        Debug(Debug::ERROR) << "Cannot close file " << dbTypeFile << "\n";
+        EXIT(EXIT_FAILURE);
+    }
+#if SIMDE_ENDIAN_ORDER == SIMDE_ENDIAN_BIG
+    dbtype = __builtin_bswap32(dbtype);
+#endif
     return dbtype;
 }
 
@@ -394,4 +441,39 @@ std::string FileUtil::createTemporaryDirectory(const std::string& basePath, cons
     }
     FileUtil::symlinkAlias(tmpDir, "latest");
     return tmpDir;
+}
+
+void FileUtil::fixRlimitNoFile() {
+    static bool increasedRlimitNoFile(false);
+    if (increasedRlimitNoFile == false) {
+        increasedRlimitNoFile = true;
+        struct rlimit limit;
+        if (getrlimit(RLIMIT_NOFILE, &limit) != 0) {
+            Debug(Debug::WARNING) << "Could not increase maximum number of open files (getrlimit " << errno << "). Use ulimit manually\n";
+            return;
+        }
+        limit.rlim_cur = std::min(std::max((rlim_t)8192, limit.rlim_cur), limit.rlim_max);
+        limit.rlim_max = std::min(RLIM_INFINITY, limit.rlim_max);
+        if (setrlimit(RLIMIT_NOFILE, &limit) != 0) {
+            Debug(Debug::WARNING) << "Could not increase maximum number of open files (setrlimit " << errno << "). Use ulimit manually\n";
+        }
+    }
+}
+
+std::string FileUtil::sanitizeFilename(std::string name){
+    static const std::vector<std::pair<char, char>> symbolTable =
+            {{'\\', '@'},
+             {'/', '@'},
+             {':', '@'},
+             {'*', '@'},
+             {'?', '@'},
+             {'<', '@'},
+             {'>', '@'},
+             {'|', '!'}};
+
+    std::vector<std::pair<char, char>>::const_iterator it;
+    for (it = symbolTable.begin(); it != symbolTable.end(); ++it) {
+        std::replace(name.begin(), name.end(), it->first, it->second);
+    }
+    return name;
 }

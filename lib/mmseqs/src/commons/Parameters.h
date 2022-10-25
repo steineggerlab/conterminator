@@ -1,4 +1,4 @@
-// Written by Martin Steinegger martin.steinegger@mpibpc.mpg.de
+// Written by Martin Steinegger martin.steinegger@snu.ac.kr
 //
 // Represents parameters of MMseqs2
 //
@@ -12,7 +12,7 @@
 #include <utility>
 
 #include "Command.h"
-#include "ScoreMatrixFile.h"
+#include "MultiParam.h"
 
 #define PARAMETER(x) const static int x##_ID = __COUNTER__; \
     				 MMseqsParameter x;
@@ -44,6 +44,18 @@ struct MMseqsParameter {
                     void * value, const char * regex, unsigned int category = COMMAND_MISC):
             name(n), display(display), description(d), type(hash), value(value),
             regex(regex), uniqid(uid), category(category), wasSet(false){}
+
+    void addCategory(unsigned int cat) {
+        category |= cat;
+    }
+
+    void removeCategory(unsigned int cat) {
+        category &= ~cat;
+    }
+
+    void replaceCategory(unsigned int cat) {
+        category = cat;
+    }
 };
 
 
@@ -53,8 +65,8 @@ public:
     static const int DBTYPE_AMINO_ACIDS = 0;
     static const int DBTYPE_NUCLEOTIDES = 1;
     static const int DBTYPE_HMM_PROFILE = 2;
-    static const int DBTYPE_PROFILE_STATE_SEQ = 3;
-    static const int DBTYPE_PROFILE_STATE_PROFILE = 4;
+    //static const int DBTYPE_PROFILE_STATE_SEQ = 3;
+    //static const int DBTYPE_PROFILE_STATE_PROFILE = 4;
     static const int DBTYPE_ALIGNMENT_RES = 5;
     static const int DBTYPE_CLUSTER_RES = 6;
     static const int DBTYPE_PREFILTER_RES = 7;
@@ -70,7 +82,11 @@ public:
     static const int DBTYPE_FLATFILE = 17; // needed for verification
     static const int DBTYPE_SEQTAXDB = 18; // needed for verification
     static const int DBTYPE_STDIN = 19; // needed for verification
+    static const int DBTYPE_URI = 20; // needed for verification
 
+    static const unsigned int DBTYPE_EXTENDED_COMPRESSED = 1;
+    static const unsigned int DBTYPE_EXTENDED_INDEX_NEED_SRC = 2;
+    static const unsigned int DBTYPE_EXTENDED_CONTEXT_PSEUDO_COUNTS = 4;
 
     // don't forget to add new database types to DBReader::getDbTypeName and Parameters::PARAM_OUTPUT_DBTYPE
 
@@ -95,6 +111,16 @@ public:
     static const unsigned int ALIGNMENT_MODE_SCORE_COV_SEQID = 3;
     static const unsigned int ALIGNMENT_MODE_UNGAPPED = 4;
 
+    static const unsigned int ALIGNMENT_OUTPUT_ALIGNMENT = 0;
+    static const unsigned int ALIGNMENT_OUTPUT_CLUSTER = 1;
+
+    static const unsigned int EXPAND_TRANSFER_EVALUE = 0;
+    static const unsigned int EXPAND_RESCORE_BACKTRACE = 1;
+
+    static const unsigned int PCMODE_SUBSTITUTION_SCORE = 0;
+    static const unsigned int PCMODE_CONTEXT_SPECIFIC = 1;
+
+
     static const unsigned int WRITER_ASCII_MODE = 0;
     static const unsigned int WRITER_COMPRESSED_MODE = 1;
     static const unsigned int WRITER_LEXICOGRAPHIC_MODE = 2;
@@ -103,7 +129,17 @@ public:
     static const int FORMAT_ALIGNMENT_BLAST_TAB = 0;
     static const int FORMAT_ALIGNMENT_SAM = 1;
     static const int FORMAT_ALIGNMENT_BLAST_WITH_LEN = 2;
+    static const int FORMAT_ALIGNMENT_HTML = 3;
+    static const int FORMAT_ALIGNMENT_BLAST_TAB_WITH_HEADERS = 4;
 
+    // result2msa
+    static const int FORMAT_MSA_CA3M = 0;
+    static const int FORMAT_MSA_CA3M_CONSENSUS = 1;
+    static const int FORMAT_MSA_FASTADB = 2;
+    static const int FORMAT_MSA_FASTADB_SUMMARY = 3;
+    static const int FORMAT_MSA_STOCKHOLM_FLAT = 4;
+    static const int FORMAT_MSA_A3M = 5;
+    static const int FORMAT_MSA_A3M_ALN_INFO = 6;
     // outfmt
     static const int OUTFMT_QUERY = 0;
     static const int OUTFMT_TARGET = 1;
@@ -140,15 +176,17 @@ public:
     static const int OUTFMT_TAXID = 32;
     static const int OUTFMT_TAXNAME = 33;
     static const int OUTFMT_TAXLIN = 34;
+    static const int OUTFMT_QORFSTART = 35;
+    static const int OUTFMT_QORFEND = 36;
+    static const int OUTFMT_TORFSTART = 37;
+    static const int OUTFMT_TORFEND = 38;
+    static const int OUTFMT_FIDENT = 39;
 
 
-    static std::vector<int> getOutputFormat(const std::string &outformat, bool &needSequences, bool &needBacktrace, bool &needFullHeaders,
+
+
+    static std::vector<int> getOutputFormat(int formatMode, const std::string &outformat, bool &needSequences, bool &needBacktrace, bool &needFullHeaders,
                                             bool &needLookup, bool &needSource, bool &needTaxonomyMapping, bool &needTaxonomy);
-
-    // convertprofiledb
-    static const int PROFILE_MODE_HMM = 0;
-    static const int PROFILE_MODE_PSSM = 1;
-    static const int PROFILE_MODE_HMM3 = 2;
 
     // clustering
     static const int SET_COVER = 0;
@@ -167,11 +205,17 @@ public:
     // taxonomy output
     static const int TAXONOMY_OUTPUT_LCA = 0;
     static const int TAXONOMY_OUTPUT_ALIGNMENT = 1;
+    static const int TAXONOMY_OUTPUT_BOTH = 2;
+
+    // aggregate taxonomy
+    static const int AGG_TAX_UNIFORM = 0;
+    static const int AGG_TAX_MINUS_LOG_EVAL = 1;
+    static const int AGG_TAX_SCORE = 2;
 
     // taxonomy search strategy
     static const int TAXONOMY_SINGLE_SEARCH = 1;
     static const int TAXONOMY_2BLCA = 2;
-    static const int TAXONOMY_2BLCA_APPROX = 3;
+    static const int TAXONOMY_APPROX_2BLCA = 3;
     static const int TAXONOMY_TOP_HIT = 4;
 
     static const int PARSE_VARIADIC = 1;
@@ -229,7 +273,7 @@ public:
     static const int RESCORE_MODE_HAMMING = 0;
     static const int RESCORE_MODE_SUBSTITUTION = 1;
     static const int RESCORE_MODE_ALIGNMENT = 2;
-    static const int RESCORE_MODE_GLOBAL_ALIGNMENT = 3;
+    static const int RESCORE_MODE_END_TO_END_ALIGNMENT = 3;
     static const int RESCORE_MODE_WINDOW_QUALITY_ALIGNMENT = 4;
 
     // combinepvalperset
@@ -245,6 +289,17 @@ public:
     // createsubdb, filtertaxseqdb type
     static const int SUBDB_MODE_HARD = 0;
     static const int SUBDB_MODE_SOFT = 1;
+
+    static const int ID_MODE_KEYS = 0;
+    static const int ID_MODE_LOOKUP = 1;
+
+    // unpackdb
+    static const int UNPACK_NAME_KEY = 0;
+    static const int UNPACK_NAME_ACCESSION = 1;
+
+    // result direction
+    static const int PARAM_RESULT_DIRECTION_QUERY  = 0;
+    static const int PARAM_RESULT_DIRECTION_TARGET = 1;
 
     // path to databases
     std::string db1;
@@ -306,8 +361,8 @@ public:
     const char** restArgv;
     int restArgc;
 
-    ScoreMatrixFile scoringMatrixFile;       // path to scoring matrix
-    ScoreMatrixFile seedScoringMatrixFile;   // seed sub. matrix
+    MultiParam<NuclAA<std::string>> scoringMatrixFile;       // path to scoring matrix
+    MultiParam<NuclAA<std::string>> seedScoringMatrixFile;   // seed sub. matrix
     size_t maxSeqLen;                    // sequence length
     size_t maxResListLen;                // Maximal result list length per query
     int    verbosity;                    // log level
@@ -319,12 +374,15 @@ public:
     // PREFILTER
     float  sensitivity;                  // target sens
     int    kmerSize;                     // kmer size for the prefilter
-    int    kmerScore;                    // kmer score for the prefilter
-    int    alphabetSize;                 // alphabet size for the prefilter
+    MultiParam<SeqProf<int>> kmerScore;   // kmer score for the prefilter
+    MultiParam<NuclAA<int>> alphabetSize; // alphabet size for the prefilter
     int    compBiasCorrection;           // Aminoacid composiont correction
+    float    compBiasCorrectionScale;    // Aminoacid composiont correction scale factor
+
     bool   diagonalScoring;              // switch diagonal scoring
     int    exactKmerMatching;            // only exact k-mer matching
     int    maskMode;                     // mask low complex areas
+    float  maskProb;                     // mask probability
     int    maskLowerCaseMode;            // mask lowercase letters in prefilter and kmermatchers
 
     int    minDiagScoreThr;              // min diagonal score
@@ -336,13 +394,16 @@ public:
     bool   splitAA;                      // Split database by amino acid count instead
     int    preloadMode;                  // Preload mode of database
     float  scoreBias;                    // Add this bias to the score when computing the alignements
+    float  realignScoreBias;             // Add this bias additionally when realigning
+    int    realignMaxSeqs;               // Max alignments to realign
     std::string spacedKmerPattern;       // User-specified kmer pattern
     std::string localTmp;                // Local temporary path
 
     // ALIGNMENT
     int alignmentMode;                   // alignment mode 0=fastest on parameters,
                                          // 1=score only, 2=score, cov, start/end pos, 3=score, cov, start/end pos, seq.id,
-    float  evalThr;                      // e-value threshold for acceptance
+    int alignmentOutputMode;             // alignment output mode 0=alignment, 1=cluster
+    double evalThr;                      // e-value threshold for acceptance
     float  covThr;                       // coverage query&target threshold for acceptance
     int    covMode;                      // coverage target threshold for acceptance
     int    seqIdMode;                    // seq. id. normalize mode
@@ -354,8 +415,11 @@ public:
     int    alnLenThr;                    // min. alignment length
     bool   addBacktrace;                 // store backtrace string (M=Match, D=deletion, I=insertion)
     bool   realign;                      // realign hit with more conservative score
-    int    gapOpen;                      // gap open
-    int    gapExtend;                    // gap extend
+    MultiParam<NuclAA<int>> gapOpen;             // gap open cost
+    MultiParam<NuclAA<int>> gapExtend;           // gap extension cost
+    float correlationScoreWeight; // correlation score weight
+    int    gapPseudoCount;               // for calculation of position-specific gap opening penalties
+    int    zdrop;                        // zdrop
 
     // workflow
     std::string runner;
@@ -364,15 +428,20 @@ public:
     // CLUSTERING
     int    clusteringMode;
     int    clusterSteps;
-    bool   cascaded;
+    bool   singleStepClustering;
     int    clusterReassignment;
 
     // SEARCH WORKFLOW
     int numIterations;
     float startSens;
     int sensSteps;
-    bool sliceSearch;
+    bool exhaustiveSearch;
+    int exhaustiveFilterMsa;
     int strand;
+    int orfFilter;
+    float orfFilterSens;
+    double orfFilterEval;
+    bool lcaSearch;
 
     // easysearch
     bool greedyBestHits;
@@ -394,11 +463,8 @@ public:
     int translate;
     int createLookup;
 
-    // convertprofiledb
-    int profileMode;
-
     // convertalis
-    int formatAlignmentMode;            // BLAST_TAB, PAIRWISE or SAM
+    int formatAlignmentMode;
     std::string outfmt;
     bool dbOut;
 
@@ -410,12 +476,9 @@ public:
     int sortResults;
 
     // result2msa
+    int msaFormatMode;
     bool allowDeletion;
-    bool addInternalId;
-    bool compressMSA;
-    bool summarizeHeader;
     std::string summaryPrefix;
-    bool omitConsensus;
     bool skipQuery;
 
     // convertmsa
@@ -428,15 +491,17 @@ public:
     // result2profile
     int maskProfile;
     float filterMaxSeqId;
-    float evalProfile;
+    double evalProfile;
     int filterMsa;
     float qsc;
-    float qid;
+    std::string qid;
     float covMSAThr;
     int Ndiff;
+    int filterMinEnable;
     bool wg;
-    float pca;
-    float pcb;
+    int pcmode;
+    MultiParam<PseudoCounts> pca;
+    MultiParam<PseudoCounts> pcb;
 
     // sequence2profile
     float neff;
@@ -453,12 +518,13 @@ public:
 
     // linearcluster
     int kmersPerSequence;
-    float kmersPerSequenceScale;
+    MultiParam<NuclAA<float>> kmersPerSequenceScale;
     bool includeOnlyExtendable;
     bool ignoreMultiKmer;
     int hashShift;
     int pickNbest;
     int adjustKmerLength;
+    int resultDirection;
 
     // indexdb
     int checkCompatible;
@@ -473,9 +539,11 @@ public:
     // splitsequence
     int sequenceOverlap;
     int sequenceSplitMode;
+    int headerSplitMode;
 
     // convert2fasta
     bool useHeaderFile;
+    int writeLookup;
 
     // result2flat
     bool useHeader;
@@ -516,6 +584,7 @@ public:
 
     // mergedbs
     std::string mergePrefixes;
+    bool mergeStopEmpty;
 
     // summarizetabs
     float overlap;
@@ -541,7 +610,7 @@ public:
     // diff
     bool useSequenceId;
 
-    //prefixid
+    // prefixid
     std::string prefix;
     bool tsvOut;
 
@@ -561,11 +630,12 @@ public:
     // lca
     int pickIdFrom;
     std::string lcaRanks;
-    bool showTaxLineage;
+    int showTaxLineage;
     std::string blacklist;
 
     // aggregatetax
     float majorityThr;
+    int voteMode;
 
     // taxonomyreport
     int reportMode;
@@ -573,16 +643,28 @@ public:
     // createtaxdb
     std::string ncbiTaxDump;
     std::string taxMappingFile;
+    int taxMappingMode;
+    int taxDbMode;
 
     // exapandaln
     int expansionMode;
+    int expandFilterClusters;
 
     // taxonomy
     int taxonomySearchMode;
-    int taxonomyOutpuMode;
+    int taxonomyOutputMode;
 
     // createsubdb
     int subDbMode;
+    int dbIdMode;
+
+    // tar2db
+    std::string tarInclude;
+    std::string tarExclude;
+
+    // unpackdb
+    std::string unpackSuffix;
+    int unpackNameMode;
 
     // for modules that should handle -h themselves
     bool help;
@@ -602,14 +684,14 @@ public:
     }
 
     void setDefaults();
+    void initMatrices();
     void parseParameters(int argc, const char *pargv[], const Command &command, bool printPar, int parseFlags,
                          int outputFlags);
-    void printUsageMessage(const Command& command,
-                           unsigned int outputFlag);
+    void printUsageMessage(const Command& command, unsigned int outputFlag, const char* extraText = NULL);
     void printParameters(const std::string &module, int argc, const char* pargv[],
                          const std::vector<MMseqsParameter*> &par);
 
-    void checkIfDatabaseIsValid(const Command& command, bool isStartVar, bool isEndVar);
+    void checkIfDatabaseIsValid(const Command& command, int argc, const char** argv, bool isStartVar, bool isMiddleVar, bool isEndVar);
 
     std::vector<MMseqsParameter*> removeParameter(const std::vector<MMseqsParameter*>& par, const MMseqsParameter& x);
 
@@ -622,6 +704,7 @@ public:
     PARAMETER(PARAM_DIAGONAL_SCORING)
     PARAMETER(PARAM_EXACT_KMER_MATCHING)
     PARAMETER(PARAM_MASK_RESIDUES)
+    PARAMETER(PARAM_MASK_PROBABILTY)
     PARAMETER(PARAM_MASK_LOWER_CASE)
 
     PARAMETER(PARAM_MIN_DIAG_SCORE)
@@ -635,6 +718,7 @@ public:
     PARAMETER(PARAM_SUB_MAT)
     PARAMETER(PARAM_SEED_SUB_MAT)
     PARAMETER(PARAM_NO_COMP_BIAS_CORR)
+    PARAMETER(PARAM_NO_COMP_BIAS_CORR_SCALE)
     PARAMETER(PARAM_SPACED_KMER_MODE)
     PARAMETER(PARAM_REMOVE_TMP_FILES)
     PARAMETER(PARAM_INCLUDE_IDENTITY)
@@ -646,6 +730,7 @@ public:
 
     // alignment
     PARAMETER(PARAM_ALIGNMENT_MODE)
+    PARAMETER(PARAM_ALIGNMENT_OUTPUT_MODE)
     PARAMETER(PARAM_E)
     PARAMETER(PARAM_C)
     PARAMETER(PARAM_COV_MODE)
@@ -657,10 +742,14 @@ public:
     PARAMETER(PARAM_MIN_SEQ_ID)
     PARAMETER(PARAM_MIN_ALN_LEN)
     PARAMETER(PARAM_SCORE_BIAS)
+    PARAMETER(PARAM_REALIGN_SCORE_BIAS)
+    PARAMETER(PARAM_REALIGN_MAX_SEQS)
+    PARAMETER(PARAM_CORR_SCORE_WEIGHT)
     PARAMETER(PARAM_ALT_ALIGNMENT)
     PARAMETER(PARAM_GAP_OPEN)
     PARAMETER(PARAM_GAP_EXTEND)
-    std::vector<MMseqsParameter*> align;
+    PARAMETER(PARAM_GAP_PSEUDOCOUNT)
+    PARAMETER(PARAM_ZDROP)
 
     // clustering
     PARAMETER(PARAM_CLUSTER_MODE)
@@ -676,9 +765,6 @@ public:
     PARAMETER(PARAM_V)
     std::vector<MMseqsParameter*> clust;
 
-    // create profile (HMM, PSSM)
-    PARAMETER(PARAM_PROFILE_TYPE)
-
     // format alignment
     PARAMETER(PARAM_FORMAT_MODE)
     PARAMETER(PARAM_FORMAT_OUTPUT)
@@ -691,12 +777,9 @@ public:
     PARAMETER(PARAM_SORT_RESULTS)
 
     // result2msa
+    PARAMETER(PARAM_MSA_FORMAT_MODE)
     PARAMETER(PARAM_ALLOW_DELETION)
-    PARAMETER(PARAM_ADD_INTERNAL_ID)
-    PARAMETER(PARAM_COMPRESS_MSA)
-    PARAMETER(PARAM_SUMMARIZE_HEADER)
     PARAMETER(PARAM_SUMMARY_PREFIX)
-    PARAMETER(PARAM_OMIT_CONSENSUS)
     PARAMETER(PARAM_SKIP_QUERY)
 
     // convertmsa
@@ -715,7 +798,9 @@ public:
     PARAMETER(PARAM_FILTER_QID)
     PARAMETER(PARAM_FILTER_COV)
     PARAMETER(PARAM_FILTER_NDIFF)
+    PARAMETER(PARAM_FILTER_MIN_ENABLE)
     PARAMETER(PARAM_WG)
+    PARAMETER(PARAM_PC_MODE)
     PARAMETER(PARAM_PCA)
     PARAMETER(PARAM_PCB)
 
@@ -740,7 +825,7 @@ public:
     PARAMETER(PARAM_HASH_SHIFT)
     PARAMETER(PARAM_PICK_N_SIMILAR)
     PARAMETER(PARAM_ADJUST_KMER_LEN)
-
+    PARAMETER(PARAM_RESULT_DIRECTION)
     // workflow
     PARAMETER(PARAM_RUNNER)
     PARAMETER(PARAM_REUSELATEST)
@@ -749,9 +834,13 @@ public:
     PARAMETER(PARAM_NUM_ITERATIONS)
     PARAMETER(PARAM_START_SENS)
     PARAMETER(PARAM_SENS_STEPS)
-    PARAMETER(PARAM_SLICE_SEARCH)
+    PARAMETER(PARAM_EXHAUSTIVE_SEARCH)
+    PARAMETER(PARAM_EXHAUSTIVE_SEARCH_FILTER)
     PARAMETER(PARAM_STRAND)
-
+    PARAMETER(PARAM_ORF_FILTER)
+    PARAMETER(PARAM_ORF_FILTER_S)
+    PARAMETER(PARAM_ORF_FILTER_E)
+    PARAMETER(PARAM_LCA_SEARCH)
 
     // easysearch
     PARAMETER(PARAM_GREEDY_BEST_HITS)
@@ -779,6 +868,7 @@ public:
     PARAMETER(PARAM_DB_TYPE)
     PARAMETER(PARAM_CREATEDB_MODE)
     PARAMETER(PARAM_SHUFFLE)
+    PARAMETER(PARAM_WRITE_LOOKUP)
 
     // convert2fasta
     PARAMETER(PARAM_USE_HEADER_FILE)
@@ -786,6 +876,7 @@ public:
     // split sequence
     PARAMETER(PARAM_SEQUENCE_OVERLAP)
     PARAMETER(PARAM_SEQUENCE_SPLIT_MODE)
+    PARAMETER(PARAM_HEADER_SPLIT_MODE)
 
     // gff2db
     PARAMETER(PARAM_GFF_TYPE)
@@ -845,6 +936,7 @@ public:
 
     // mergedbs
     PARAMETER(PARAM_MERGE_PREFIXES)
+    PARAMETER(PARAM_MERGE_STOP_EMPTY)
 
     // summarizetabs
     PARAMETER(PARAM_OVERLAP)
@@ -876,6 +968,7 @@ public:
 
     // aggregatetax
     PARAMETER(PARAM_MAJORITY)
+    PARAMETER(PARAM_VOTE_MODE)
 
     // taxonomyreport
     PARAMETER(PARAM_REPORT_MODE)
@@ -883,8 +976,12 @@ public:
     // createtaxdb
     PARAMETER(PARAM_NCBI_TAX_DUMP)
     PARAMETER(PARAM_TAX_MAPPING_FILE)
+    PARAMETER(PARAM_TAX_MAPPING_MODE)
+    PARAMETER(PARAM_TAX_DB_MODE)
+
     // exapandaln
     PARAMETER(PARAM_EXPANSION_MODE)
+    PARAMETER(PARAM_EXPAND_FILTER_CLUSTERS)
 
     // taxonomy
     PARAMETER(PARAM_LCA_MODE)
@@ -892,11 +989,29 @@ public:
 
     // createsubdb
     PARAMETER(PARAM_SUBDB_MODE)
+    PARAMETER(PARAM_ID_MODE)
+
+    // tar2db
+    PARAMETER(PARAM_TAR_INCLUDE)
+    PARAMETER(PARAM_TAR_EXCLUDE)
+
+    // unpackdb
+    PARAMETER(PARAM_UNPACK_SUFFIX)
+    PARAMETER(PARAM_UNPACK_NAME_MODE)
 
     // for modules that should handle -h themselves
     PARAMETER(PARAM_HELP)
     PARAMETER(PARAM_HELP_LONG)
 
+    struct PredefinedSubstitutionMatrix{
+        std::string name;
+        const unsigned char * subMatData;
+        unsigned int subMatDataLen;
+        PredefinedSubstitutionMatrix(const char * name, const unsigned char * subMatData, const unsigned int subMatDataLen)
+                : name(name), subMatData(subMatData), subMatDataLen(subMatDataLen) {}
+
+    };
+    std::vector<PredefinedSubstitutionMatrix> substitutionMatrices;
 
     std::vector<MMseqsParameter*> empty;
     std::vector<MMseqsParameter*> onlyverbosity;
@@ -905,14 +1020,17 @@ public:
     std::vector<MMseqsParameter*> onlythreads;
     std::vector<MMseqsParameter*> threadsandcompression;
 
+    std::vector<MMseqsParameter*> alignall;
+    std::vector<MMseqsParameter*> align;
     std::vector<MMseqsParameter*> rescorediagonal;
     std::vector<MMseqsParameter*> alignbykmer;
     std::vector<MMseqsParameter*> createFasta;
     std::vector<MMseqsParameter*> convertprofiledb;
     std::vector<MMseqsParameter*> sequence2profile;
     std::vector<MMseqsParameter*> result2profile;
-    std::vector<MMseqsParameter*> result2pp;
     std::vector<MMseqsParameter*> result2msa;
+    std::vector<MMseqsParameter*> result2dnamsa;
+    std::vector<MMseqsParameter*> filterresult;
     std::vector<MMseqsParameter*> convertmsa;
     std::vector<MMseqsParameter*> msa2profile;
     std::vector<MMseqsParameter*> createtsv;
@@ -923,6 +1041,7 @@ public:
     std::vector<MMseqsParameter*> reverseseq;
     std::vector<MMseqsParameter*> splitdb;
     std::vector<MMseqsParameter*> splitsequence;
+    std::vector<MMseqsParameter*> masksequence;
     std::vector<MMseqsParameter*> indexdb;
     std::vector<MMseqsParameter*> kmerindexdb;
     std::vector<MMseqsParameter*> createindex;
@@ -931,6 +1050,7 @@ public:
     std::vector<MMseqsParameter*> createdb;
     std::vector<MMseqsParameter*> convert2fasta;
     std::vector<MMseqsParameter*> result2flat;
+    std::vector<MMseqsParameter*> result2repseq;
     std::vector<MMseqsParameter*> gff2db;
     std::vector<MMseqsParameter*> clusthash;
     std::vector<MMseqsParameter*> kmermatcher;
@@ -955,6 +1075,7 @@ public:
     std::vector<MMseqsParameter*> createseqfiledb;
     std::vector<MMseqsParameter*> filterDb;
     std::vector<MMseqsParameter*> offsetalignment;
+    std::vector<MMseqsParameter*> proteinaln2nucl;
     std::vector<MMseqsParameter*> subtractdbs;
     std::vector<MMseqsParameter*> diff;
     std::vector<MMseqsParameter*> concatdbs;
@@ -968,49 +1089,57 @@ public:
     std::vector<MMseqsParameter*> convertkb;
     std::vector<MMseqsParameter*> tsv2db;
     std::vector<MMseqsParameter*> lca;
+    std::vector<MMseqsParameter*> majoritylca;
     std::vector<MMseqsParameter*> addtaxonomy;
     std::vector<MMseqsParameter*> taxonomyreport;
     std::vector<MMseqsParameter*> filtertaxdb;
     std::vector<MMseqsParameter*> filtertaxseqdb;
     std::vector<MMseqsParameter*> aggregatetax;
+    std::vector<MMseqsParameter*> aggregatetaxweights;
     std::vector<MMseqsParameter*> taxonomy;
     std::vector<MMseqsParameter*> easytaxonomy;
     std::vector<MMseqsParameter*> createsubdb;
+    std::vector<MMseqsParameter*> renamedbkeys;
     std::vector<MMseqsParameter*> createtaxdb;
     std::vector<MMseqsParameter*> profile2pssm;
     std::vector<MMseqsParameter*> profile2seq;
-    std::vector<MMseqsParameter*> profile2cs;
     std::vector<MMseqsParameter*> besthitbyset;
     std::vector<MMseqsParameter*> combinepvalbyset;
     std::vector<MMseqsParameter*> multihitdb;
     std::vector<MMseqsParameter*> multihitsearch;
     std::vector<MMseqsParameter*> expandaln;
+    std::vector<MMseqsParameter*> expand2profile;
+    std::vector<MMseqsParameter*> pairaln;
     std::vector<MMseqsParameter*> sortresult;
     std::vector<MMseqsParameter*> enrichworkflow;
     std::vector<MMseqsParameter*> databases;
+    std::vector<MMseqsParameter*> tar2db;
+    std::vector<MMseqsParameter*> unpackdbs;
+    std::vector<MMseqsParameter*> appenddbtoindex;
 
     std::vector<MMseqsParameter*> combineList(const std::vector<MMseqsParameter*> &par1,
                                              const std::vector<MMseqsParameter*> &par2);
 
-    size_t hashParameter(const std::vector<std::string> &filenames, const std::vector<MMseqsParameter*> &par);
+    size_t hashParameter(const std::vector<DbType> &dbtypes, const std::vector<std::string> &filenames, const std::vector<MMseqsParameter*> &par);
 
     std::string createParameterString(const std::vector<MMseqsParameter*> &vector, bool wasSet = false);
 
-    void overrideParameterDescription(Command& command, int uid, const char* description, const char* regex = NULL, int category = 0);
+    void overrideParameterDescription(MMseqsParameter& par, const char *description, const char *regex = NULL, int category = 0);
 
-    static void checkIfTaxDbIsComplete(std::string & filename);
+    static std::vector<std::string> findMissingTaxDbFiles(const std::string &filename);
+    static void printTaxDbError(const std::string &filename, const std::vector<std::string>& missingFiles);
+
+    static const uint32_t DBTYPE_MASK = 0x0000FFFF;
 
     static bool isEqualDbtype(const int type1, const int type2) {
-        return ((type1 & 0x3FFFFFFF) == (type2 & 0x3FFFFFFF));
+        return ((type1 & DBTYPE_MASK) == (type2 & DBTYPE_MASK));
     }
 
     static const char* getDbTypeName(int dbtype) {
-        switch (dbtype & 0x7FFFFFFF) {
+        switch (dbtype & DBTYPE_MASK) {
             case DBTYPE_AMINO_ACIDS: return "Aminoacid";
             case DBTYPE_NUCLEOTIDES: return "Nucleotide";
             case DBTYPE_HMM_PROFILE: return "Profile";
-            case DBTYPE_PROFILE_STATE_SEQ: return "Profile state";
-            case DBTYPE_PROFILE_STATE_PROFILE: return "Profile profile";
             case DBTYPE_ALIGNMENT_RES: return "Alignment";
             case DBTYPE_CLUSTER_RES: return "Clustering";
             case DBTYPE_PREFILTER_RES: return "Prefilter";
@@ -1023,6 +1152,8 @@ public:
             case DBTYPE_OFFSETDB: return "Offsetted headers";
             case DBTYPE_DIRECTORY: return "Directory";
             case DBTYPE_FLATFILE: return "Flatfile";
+            case DBTYPE_STDIN: return "stdin";
+            case DBTYPE_URI: return "uri";
 
             default: return "Unknown";
         }
@@ -1031,11 +1162,11 @@ public:
 protected:
     Parameters();
     static Parameters* instance;
-    virtual ~Parameters() {};
 
 private:
     Parameters(Parameters const&);
     void operator=(Parameters const&);
+
 };
 
 #endif

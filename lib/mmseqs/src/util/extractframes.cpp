@@ -18,8 +18,6 @@
 
 int extractframes(int argc, const char **argv, const Command& command) {
     Parameters& par = Parameters::getInstance();
-    par.overrideParameterDescription((Command &)command, par.PARAM_ORF_FORWARD_FRAMES.uniqid, "comma-seperated list of frames on the forward strand to be extracted", NULL, par.PARAM_ORF_FORWARD_FRAMES.category);
-    par.overrideParameterDescription((Command &)command, par.PARAM_ORF_REVERSE_FRAMES.uniqid, "comma-seperated list of frames on the reverse strand to be extracted", NULL, par.PARAM_ORF_REVERSE_FRAMES.category);
     par.parseParameters(argc, argv, command, true, 0, 0);
 
     DBReader<unsigned int> reader(par.db1.c_str(), par.db1Index.c_str(), par.threads, DBReader<unsigned int>::USE_INDEX|DBReader<unsigned int>::USE_DATA);
@@ -47,9 +45,8 @@ int extractframes(int argc, const char **argv, const Command& command) {
         if (querySize == 0) {
             queryFrom = 0;
         }
-        char buffer[LINE_MAX];
 
-
+        char buffer[1024];
         std::string reverseComplementStr;
         reverseComplementStr.reserve(32000);
         for (unsigned int i = queryFrom; i < (queryFrom + querySize); ++i){
@@ -84,15 +81,13 @@ int extractframes(int argc, const char **argv, const Command& command) {
                 bool hasWrongChar = false;
                 for(size_t pos = 0; pos < sequenceLength; ++pos) {
                     char reverseComplement = Orf::complement(data[sequenceLength - pos - 1]);
-                    reverseComplementStr.push_back(Orf::complement(data[sequenceLength - pos - 1]));
-                    if(reverseComplement == '.') {
-                        Debug(Debug::WARNING) << "Can not compute reverse sequence of  sequence with index " << i << "!\n";
-                        hasWrongChar = true;
-                    }
+                    reverseComplement = (reverseComplement == '.') ? 'N' : reverseComplement;
+                    reverseComplementStr.push_back(reverseComplement);
+                    hasWrongChar |= (reverseComplement == '.');
                 }
-                if(hasWrongChar == true){
-                    continue;
-                }
+//                if(hasWrongChar == true){
+//                    continue;
+//                }
                 reverseComplementStr.push_back('\n');
             }
 

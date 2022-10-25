@@ -4,6 +4,7 @@
 #include "FileUtil.h"
 #include "Debug.h"
 #include "Util.h"
+#include "Matcher.h"
 #include <map>
 #include <algorithm>
 
@@ -11,70 +12,7 @@
 #include <omp.h>
 #endif
 
-TaxID selectTaxForSet (const std::vector<TaxID> &setTaxa, NcbiTaxonomy const *taxonomy, const float majorityCutoff) {
-    // count num occurences of each ancestor 
-    std::map<TaxID,unsigned int> ancTaxIdsCounts;
-    size_t totalAssignedSeqs = 0;
-
-    for (size_t i = 0; i < setTaxa.size(); ++i) {
-        TaxID currTaxId = setTaxa[i];
-        // ignore unassigned sequences
-        if (currTaxId == 0) {
-            continue;
-        }
-        TaxonNode const * node = taxonomy->taxonNode(currTaxId, false);
-        if (node == NULL) {
-            Debug(Debug::ERROR) << "taxonid: " << currTaxId << " does not match a legal taxonomy node.\n";
-            EXIT(EXIT_FAILURE);
-        }
-        totalAssignedSeqs++;
-
-        // add count
-        if (ancTaxIdsCounts.find(currTaxId) != ancTaxIdsCounts.end()) {
-            ancTaxIdsCounts[currTaxId]++;
-        } else {
-            ancTaxIdsCounts.insert(std::pair<TaxID,unsigned int>(currTaxId,1));
-        }
-
-        // iterate all ancestors up to the root
-        TaxID currParentTaxId = node->parentTaxId;
-        while (currParentTaxId != currTaxId) {
-            TaxonNode const * node = taxonomy->taxonNode(currParentTaxId, false);
-            currTaxId = currParentTaxId;
-            if (ancTaxIdsCounts.find(currTaxId) != ancTaxIdsCounts.end()) {
-                ancTaxIdsCounts[currTaxId]++;
-            } else {
-                ancTaxIdsCounts.insert(std::pair<TaxID,unsigned int>(currTaxId,1));
-            }
-            currParentTaxId = node->parentTaxId;
-        }
-    }
-
-    // select the lowest ancestor that meets the cutoff
-    int minRank = INT_MAX;
-    TaxID selctedTaxon = 0;
-    float selectedPercent = 0;
-
-    for (std::map<TaxID,unsigned int>::iterator it = ancTaxIdsCounts.begin(); it != ancTaxIdsCounts.end(); it++) {
-        float currPercent = float(it->second) / totalAssignedSeqs;
-        if (currPercent >= majorityCutoff) {
-            TaxID currTaxId = it->first;
-            TaxonNode const * node = taxonomy->taxonNode(currTaxId, false);
-            int currRankInd = NcbiTaxonomy::findRankIndex(node->rank);
-            if (currRankInd > 0) {
-                if ((currRankInd < minRank) || ((currRankInd == minRank) && (currPercent > selectedPercent))) {
-                    selctedTaxon = currTaxId;
-                    minRank = currRankInd;
-                    selectedPercent = currPercent;
-                }
-            }
-        }
-    }
-
-    return (selctedTaxon);
-}
-
-int aggregatetax(int argc, const char **argv, const Command& command) {
+int aggregate(const bool useAln, int argc, const char **argv, const Command& command) {
     Parameters& par = Parameters::getInstance();
     par.parseParameters(argc, argv, command, true, 0, 0);
 
@@ -89,12 +27,27 @@ int aggregatetax(int argc, const char **argv, const Command& command) {
     DBReader<unsigned int> taxSeqReader(par.db3.c_str(), par.db3Index.c_str(), par.threads, DBReader<unsigned int>::USE_DATA|DBReader<unsigned int>::USE_INDEX);
     taxSeqReader.open(DBReader<unsigned int>::NOSORT);
 
-    DBWriter writer(par.db4.c_str(), par.db4Index.c_str(), par.threads, par.compressed, Parameters::DBTYPE_TAXONOMICAL_RESULT);
+    // open alignment per sequence - will be used only if useAln
+    DBReader<unsigned int>* alnSeqReader = NULL;
+    if (useAln == true) {
+        alnSeqReader = new DBReader<unsigned int>(par.db4.c_str(), par.db4Index.c_str(), par.threads, DBReader<unsigned int>::USE_DATA|DBReader<unsigned int>::USE_INDEX);
+        alnSeqReader->open(DBReader<unsigned int>::NOSORT);
+    }
+
+    // output is either db4 or db5
+    std::string outDbStr = par.db4;
+    std::string outDbIndexStr = par.db4Index;
+    if (useAln == true) {
+        outDbStr = par.db5;
+        outDbIndexStr = par.db5Index;
+    }
+
+    DBWriter writer(outDbStr.c_str(), outDbIndexStr.c_str(), par.threads, par.compressed, Parameters::DBTYPE_TAXONOMICAL_RESULT);
     writer.open();
 
     std::vector<std::string> ranks = NcbiTaxonomy::parseRanks(par.lcaRanks);
 
-    Debug::Progress progress(taxSeqReader.getSize());
+    Debug::Progress progress(setToSeqReader.getSize());
 
     #pragma omp parallel
     {
@@ -103,8 +56,9 @@ int aggregatetax(int argc, const char **argv, const Command& command) {
         thread_idx = (unsigned int) omp_get_thread_num();
 #endif
         // per thread variables
-        const char *entry[2048];
-        std::vector<TaxID> setTaxa;
+        const char *entry[255];
+        std::vector<WeightedTaxHit> setTaxa;
+
         std::string setTaxStr;
         setTaxStr.reserve(4096);
 
@@ -121,38 +75,100 @@ int aggregatetax(int argc, const char **argv, const Command& command) {
                 Util::getWordsOfLine(results, entry, 255);
                 unsigned int seqKey = Util::fast_atoi<unsigned int>(entry[0]);
 
-                char *seqToTaxData = taxSeqReader.getDataByDBKey(seqKey, thread_idx);
-                Util::getWordsOfLine(seqToTaxData, entry, 255);
-                TaxID taxon = Util::fast_atoi<int>(entry[0]);
+                size_t seqId = taxSeqReader.getId(seqKey);
+                if (seqId == UINT_MAX) {
+                    Debug(Debug::ERROR) << "Missing key " << seqKey << " in tax result\n";
+                    EXIT(EXIT_FAILURE);
+                }
+                char *seqToTaxData = taxSeqReader.getData(seqId, thread_idx);
+                TaxID taxon = Util::fast_atoi<int>(seqToTaxData);
 
-                setTaxa.emplace_back(taxon);
+                if (useAln == true && taxon != 0) {
+                    size_t alnId = alnSeqReader->getId(seqKey);
+                    if (alnId == UINT_MAX) {
+                        Debug(Debug::ERROR) << "Missing key " << alnId << " in alignment result\n";
+                        EXIT(EXIT_FAILURE);
+                    }
+                    char *seqToAlnData = alnSeqReader->getData(alnId, thread_idx);
+                    float weight = FLT_MAX;
+                    size_t columns = Util::getWordsOfLine(seqToAlnData, entry, 255);
+                    if (par.voteMode == Parameters::AGG_TAX_MINUS_LOG_EVAL) {
+                        if (columns <= 3) {
+                            Debug(Debug::ERROR) << "No alignment evalue for taxon " << taxon << " found\n";
+                            EXIT(EXIT_FAILURE);
+                        }
+                        weight = strtod(entry[3], NULL);
+                    } else if (par.voteMode == Parameters::AGG_TAX_SCORE) {
+                        if (columns <= 1) {
+                            Debug(Debug::ERROR) << "No alignment score for taxon " << taxon << " found\n";
+                            EXIT(EXIT_FAILURE);
+                        }
+                        weight = strtod(entry[1], NULL);
+                    }
+                    setTaxa.emplace_back(taxon, weight, par.voteMode);
+                } else {
+                    const int uniformMode = Parameters::AGG_TAX_UNIFORM;
+                    setTaxa.emplace_back(taxon, 1.0, uniformMode);
+                }
+
                 results = Util::skipLine(results);
             }
 
-            // aggregate
-            TaxID setSelectedTaxon = selectTaxForSet(setTaxa, t, par.majorityThr);
-            TaxonNode const * node = t->taxonNode(setSelectedTaxon, false);
+            // aggregate - the counters will be filled by the selection function:
+            WeightedTaxResult result = t->weightedMajorityLCA(setTaxa, par.majorityThr);
+            TaxonNode const * node = t->taxonNode(result.taxon, false);
+
+            size_t totalNumSeqs = result.assignedSeqs + result.unassignedSeqs;
             
             // prepare write
-            if ((setSelectedTaxon == 0) || (node == NULL)) {
-                setTaxStr = "0\tno rank\tunclassified";
+            if ((result.taxon == 0) || (node == NULL)) {
+                setTaxStr.append(SSTR(0));
+                setTaxStr.append(1, '\t');
+                setTaxStr.append("no rank");
+                setTaxStr.append(1, '\t');
+                setTaxStr.append("unclassified");
+                setTaxStr.append(1, '\t');
+                setTaxStr.append(SSTR(totalNumSeqs));
+                setTaxStr.append(1, '\t');
+                setTaxStr.append(SSTR(result.assignedSeqs));
+                setTaxStr.append(1, '\t');
+                setTaxStr.append(SSTR(result.seqsAgreeWithSelectedTaxon));
+                setTaxStr.append(1, '\t');
+                setTaxStr.append(SSTR(roundf(result.selectedPercent * 100) / 100));
                 if (!ranks.empty()) {
-                    setTaxStr += '\t';
+                    setTaxStr.append(1, '\t');
                 }
-                if (par.showTaxLineage) {
-                    setTaxStr += '\t';
+                if (par.showTaxLineage > 0) {
+                    setTaxStr.append(1, '\t');
                 }
             } else {
-                setTaxStr = SSTR(node->taxId) + '\t' + node->rank + '\t' + node->name;
+                setTaxStr.append(SSTR(node->taxId));
+                setTaxStr.append(1, '\t');
+                setTaxStr.append(t->getString(node->rankIdx));
+                setTaxStr.append(1, '\t');
+                setTaxStr.append(t->getString(node->nameIdx));
+                setTaxStr.append(1, '\t');
+                setTaxStr.append(SSTR(totalNumSeqs));
+                setTaxStr.append(1, '\t');
+                setTaxStr.append(SSTR(result.assignedSeqs));
+                setTaxStr.append(1, '\t');
+                setTaxStr.append(SSTR(result.seqsAgreeWithSelectedTaxon));
+                setTaxStr.append(1, '\t');
+                setTaxStr.append(SSTR(roundf(result.selectedPercent * 100) / 100));
                 if (!ranks.empty()) {
-                    std::string lcaRanks = Util::implode(t->AtRanks(node, ranks), ';');
-                    setTaxStr += '\t' + lcaRanks;
+                    setTaxStr.append(1, '\t');
+                    setTaxStr.append(Util::implode(t->AtRanks(node, ranks), ';'));
                 }
-                if (par.showTaxLineage) {
-                    setTaxStr += '\t' + t->taxLineage(node);
+                if (par.showTaxLineage == 1) {
+                    setTaxStr.append(1, '\t');
+                    setTaxStr.append(t->taxLineage(node, true));
+                }
+                if (par.showTaxLineage == 2) {
+                    setTaxStr.append(1, '\t');
+                    setTaxStr.append(t->taxLineage(node, false));
                 }
             }
-            setTaxStr += '\n';
+            setTaxStr.append(1, '\n');
 
             writer.writeData(setTaxStr.c_str(), setTaxStr.size(), setKey, thread_idx);
             setTaxStr.clear();
@@ -160,13 +176,25 @@ int aggregatetax(int argc, const char **argv, const Command& command) {
             // ready to move to the next set
             setTaxa.clear();
         }
-    };
-    Debug(Debug::INFO) << "\n";
+    }
 
     writer.close();
     taxSeqReader.close();
     setToSeqReader.close();
+    if (alnSeqReader != NULL) {
+        alnSeqReader->close();
+        delete alnSeqReader;
+    }
     delete t;
 
     return EXIT_SUCCESS;
+
+}
+
+int aggregatetaxweights(int argc, const char **argv, const Command& command) {
+    return aggregate(true, argc, argv, command);
+}
+
+int aggregatetax(int argc, const char **argv, const Command& command) {
+    return aggregate(false, argc, argv, command);
 }

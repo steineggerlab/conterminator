@@ -26,7 +26,10 @@ int translatenucs(int argc, const char **argv, const Command& command) {
     }
 
     size_t entries = reader.getSize();
-    unsigned int localThreads = std::max(std::min((unsigned int)par.threads, (unsigned int)entries), 1u);
+    size_t localThreads = 1;
+#ifdef OPENMP
+    localThreads = std::max(std::min((size_t)par.threads, entries), (size_t)1);
+#endif
 
     DBWriter writer(par.db2.c_str(), par.db2Index.c_str(), localThreads, par.compressed, Parameters::DBTYPE_AMINO_ACIDS);
     writer.open();
@@ -65,7 +68,7 @@ int translatenucs(int argc, const char **argv, const Command& command) {
             // needs to be int in order to be able to check
             size_t length = reader.getEntryLen(i) - 1;
             if ((data[length] != '\n' && length % 3 != 0) && (data[length - 1] == '\n' && (length - 1) % 3 != 0)) {
-                Debug(Debug::WARNING) << "Nucleotide sequence entry " << key << " length (" << length << ") is not divisible by three. Adjust length to (lenght=" <<  length - (length % 3) << ").\n";
+                Debug(Debug::WARNING) << "Nucleotide sequence entry " << key << " length (" << length << ") is not divisible by three. Adjust length to (length=" <<  length - (length % 3) << ").\n";
                 length = length - (length % 3);
             }
 

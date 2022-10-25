@@ -6,7 +6,7 @@
 #include "IndexBuilder.h"
 #include "Parameters.h"
 
-const char*  PrefilteringIndexReader::CURRENT_VERSION = "16";
+extern const char* index_version_compatible;
 unsigned int PrefilteringIndexReader::VERSION = 0;
 unsigned int PrefilteringIndexReader::META = 1;
 unsigned int PrefilteringIndexReader::SCOREMATRIXNAME = 2;
@@ -30,6 +30,8 @@ unsigned int PrefilteringIndexReader::HDR2INDEX = 20;
 unsigned int PrefilteringIndexReader::HDR2DATA = 21;
 unsigned int PrefilteringIndexReader::GENERATOR = 22;
 unsigned int PrefilteringIndexReader::SPACEDPATTERN = 23;
+unsigned int PrefilteringIndexReader::ALNINDEX = 24;
+unsigned int PrefilteringIndexReader::ALNDATA = 25;
 
 extern const char* version;
 
@@ -38,7 +40,7 @@ bool PrefilteringIndexReader::checkIfIndexFile(DBReader<unsigned int>* reader) {
     if(version == NULL){
         return false;
     }
-    return (strncmp(version, CURRENT_VERSION, strlen(CURRENT_VERSION)) == 0 ) ? true : false;
+    return (strncmp(version, index_version_compatible, strlen(index_version_compatible)) == 0 ) ? true : false;
 }
 
 std::string PrefilteringIndexReader::indexName(const std::string &outDB) {
@@ -50,16 +52,22 @@ std::string PrefilteringIndexReader::indexName(const std::string &outDB) {
 void PrefilteringIndexReader::createIndexFile(const std::string &outDB,
                                               DBReader<unsigned int> *dbr1, DBReader<unsigned int> *dbr2,
                                               DBReader<unsigned int> *hdbr1, DBReader<unsigned int> *hdbr2,
+                                              DBReader<unsigned int> *alndbr,
                                               BaseMatrix *subMat, int maxSeqLen,
                                               bool hasSpacedKmer, const std::string &spacedKmerPattern,
                                               bool compBiasCorrection, int alphabetSize, int kmerSize,
-                                              int maskMode, int maskLowerCase, int kmerThr, int splits) {
-    DBWriter writer(outDB.c_str(), std::string(outDB).append(".index").c_str(), splits, Parameters::WRITER_ASCII_MODE, Parameters::DBTYPE_INDEX_DB);
+                                              int maskMode, int maskLowerCase, float maskProb, int kmerThr, int splits) {
+
+    const int SPLIT_META = splits > 1 ? 0 : 0;
+    const int SPLIT_SEQS = splits > 1 ? 1 : 0;
+    const int SPLIT_INDX = splits > 1 ? 2 : 0;
+
+    DBWriter writer(outDB.c_str(), std::string(outDB).append(".index").c_str(), splits > 1 ? splits + 2 : 1, Parameters::WRITER_ASCII_MODE, Parameters::DBTYPE_INDEX_DB);
     writer.open();
 
     Debug(Debug::INFO) << "Write VERSION (" << VERSION << ")\n";
-    writer.writeData((char *) CURRENT_VERSION, strlen(CURRENT_VERSION) * sizeof(char), VERSION, 0);
-    writer.alignToPageSize();
+    writer.writeData((char *) index_version_compatible, strlen(index_version_compatible) * sizeof(char), VERSION, SPLIT_META);
+    writer.alignToPageSize(SPLIT_META);
 
     Debug(Debug::INFO) << "Write META (" << META << ")\n";
     const int biasCorr = compBiasCorrection ? 1 : 0;
@@ -71,11 +79,10 @@ void PrefilteringIndexReader::createIndexFile(const std::string &outDB,
     const int srcSeqType = (dbr2 !=NULL) ? dbr2->getDbtype() : seqType;
     int metadata[] = {maxSeqLen, kmerSize, biasCorr, alphabetSize, mask, spacedKmer, kmerThr, seqType, srcSeqType, headers1, headers2, splits};
     char *metadataptr = (char *) &metadata;
-    writer.writeData(metadataptr, sizeof(metadata), META, 0);
-    writer.alignToPageSize();
+    writer.writeData(metadataptr, sizeof(metadata), META, SPLIT_META);
+    writer.alignToPageSize(SPLIT_META);
 
-    if (Parameters::isEqualDbtype(seqType, Parameters::DBTYPE_HMM_PROFILE) == false &&
-        Parameters::isEqualDbtype(seqType, Parameters::DBTYPE_PROFILE_STATE_SEQ) == false) {
+    if (Parameters::isEqualDbtype(seqType, Parameters::DBTYPE_HMM_PROFILE) == false) {
         int alphabetSize = subMat->alphabetSize;
         subMat->alphabetSize = subMat->alphabetSize-1;
         ScoreMatrix s3 = ExtendedSubstitutionMatrix::calcScoreMatrix(*subMat, 3);
@@ -84,103 +91,118 @@ void PrefilteringIndexReader::createIndexFile(const std::string &outDB,
 
         char* serialized3mer = ScoreMatrix::serialize(s3);
         Debug(Debug::INFO) << "Write SCOREMATRIX3MER (" << SCOREMATRIX3MER << ")\n";
-        writer.writeData(serialized3mer, ScoreMatrix::size(s3), SCOREMATRIX3MER, 0);
-        writer.alignToPageSize();
+        writer.writeData(serialized3mer, ScoreMatrix::size(s3), SCOREMATRIX3MER, SPLIT_META);
+        writer.alignToPageSize(SPLIT_META);
         ExtendedSubstitutionMatrix::freeScoreMatrix(s3);
         free(serialized3mer);
 
         char* serialized2mer = ScoreMatrix::serialize(s2);
         Debug(Debug::INFO) << "Write SCOREMATRIX2MER (" << SCOREMATRIX2MER << ")\n";
-        writer.writeData(serialized2mer, ScoreMatrix::size(s2), SCOREMATRIX2MER, 0);
-        writer.alignToPageSize();
+        writer.writeData(serialized2mer, ScoreMatrix::size(s2), SCOREMATRIX2MER, SPLIT_META);
+        writer.alignToPageSize(SPLIT_META);
         ExtendedSubstitutionMatrix::freeScoreMatrix(s2);
         free(serialized2mer);
     }
 
     Debug(Debug::INFO) << "Write SCOREMATRIXNAME (" << SCOREMATRIXNAME << ")\n";
-    char* subData = BaseMatrix::serialize(subMat);
-    writer.writeData(subData, BaseMatrix::memorySize(subMat), SCOREMATRIXNAME, 0);
-    writer.alignToPageSize();
+    char* subData = BaseMatrix::serialize(subMat->matrixName, subMat->matrixData);
+    writer.writeData(subData, BaseMatrix::memorySize(subMat->matrixName, subMat->matrixData), SCOREMATRIXNAME, SPLIT_META);
+    writer.alignToPageSize(SPLIT_META);
     free(subData);
 
     if (spacedKmerPattern.empty() != false) {
         Debug(Debug::INFO) << "Write SPACEDPATTERN (" << SPACEDPATTERN << ")\n";
-        writer.writeData(spacedKmerPattern.c_str(), spacedKmerPattern.length(), SPACEDPATTERN, 0);
-        writer.alignToPageSize();
+        writer.writeData(spacedKmerPattern.c_str(), spacedKmerPattern.length(), SPACEDPATTERN, SPLIT_META);
+        writer.alignToPageSize(SPLIT_META);
     }
+
+    Debug(Debug::INFO) << "Write GENERATOR (" << GENERATOR << ")\n";
+    writer.writeData(version, strlen(version), GENERATOR, SPLIT_META);
+    writer.alignToPageSize(SPLIT_META);
 
     Debug(Debug::INFO) << "Write DBR1INDEX (" << DBR1INDEX << ")\n";
     char* data = DBReader<unsigned int>::serialize(*dbr1);
-    size_t offsetIndex = writer.getOffset(0);
-    writer.writeData(data, DBReader<unsigned int>::indexMemorySize(*dbr1), DBR1INDEX, 0);
-    writer.alignToPageSize();
+    size_t offsetIndex = writer.getOffset(SPLIT_SEQS);
+    writer.writeData(data, DBReader<unsigned int>::indexMemorySize(*dbr1), DBR1INDEX, SPLIT_SEQS);
+    writer.alignToPageSize(SPLIT_SEQS);
 
     Debug(Debug::INFO) << "Write DBR1DATA (" << DBR1DATA << ")\n";
-    size_t offsetData = writer.getOffset(0);
-    writer.writeStart(0);
+    size_t offsetData = writer.getOffset(SPLIT_SEQS);
+    writer.writeStart(SPLIT_SEQS);
     for(size_t fileIdx = 0; fileIdx < dbr1->getDataFileCnt(); fileIdx++) {
-        writer.writeAdd(dbr1->getDataForFile(fileIdx), dbr1->getDataSizeForFile(fileIdx), 0);
+        writer.writeAdd(dbr1->getDataForFile(fileIdx), dbr1->getDataSizeForFile(fileIdx), SPLIT_SEQS);
     }
-    writer.writeEnd(DBR1DATA, 0);
-    writer.alignToPageSize();
+    writer.writeEnd(DBR1DATA, SPLIT_SEQS);
+    writer.alignToPageSize(SPLIT_SEQS);
     free(data);
 
     if (dbr2 == NULL) {
-        writer.writeIndexEntry(DBR2INDEX, offsetIndex, DBReader<unsigned int>::indexMemorySize(*dbr1)+1, 0);
-        writer.writeIndexEntry(DBR2DATA,  offsetData,  dbr1->getTotalDataSize()+1, 0);
+        writer.writeIndexEntry(DBR2INDEX, offsetIndex, DBReader<unsigned int>::indexMemorySize(*dbr1)+1, SPLIT_SEQS);
+        writer.writeIndexEntry(DBR2DATA,  offsetData,  dbr1->getTotalDataSize()+1, SPLIT_SEQS);
     } else {
         Debug(Debug::INFO) << "Write DBR2INDEX (" << DBR2INDEX << ")\n";
         data = DBReader<unsigned int>::serialize(*dbr2);
-        writer.writeData(data, DBReader<unsigned int>::indexMemorySize(*dbr2), DBR2INDEX, 0);
-        writer.alignToPageSize();
+        writer.writeData(data, DBReader<unsigned int>::indexMemorySize(*dbr2), DBR2INDEX, SPLIT_SEQS);
+        writer.alignToPageSize(SPLIT_SEQS);
         Debug(Debug::INFO) << "Write DBR2DATA (" << DBR2DATA << ")\n";
-        writer.writeStart(0);
+        writer.writeStart(SPLIT_SEQS);
         for(size_t fileIdx = 0; fileIdx < dbr2->getDataFileCnt(); fileIdx++) {
-            writer.writeAdd(dbr2->getDataForFile(fileIdx), dbr2->getDataSizeForFile(fileIdx), 0);
+            writer.writeAdd(dbr2->getDataForFile(fileIdx), dbr2->getDataSizeForFile(fileIdx), SPLIT_SEQS);
         }
-        writer.writeEnd(DBR2DATA, 0);
-        writer.alignToPageSize();
+        writer.writeEnd(DBR2DATA, SPLIT_SEQS);
+        writer.alignToPageSize(SPLIT_SEQS);
         free(data);
     }
 
     if (hdbr1 != NULL) {
         Debug(Debug::INFO) << "Write HDR1INDEX (" << HDR1INDEX << ")\n";
         data = DBReader<unsigned int>::serialize(*hdbr1);
-        size_t offsetIndex = writer.getOffset(0);
-        writer.writeData(data, DBReader<unsigned int>::indexMemorySize(*hdbr1), HDR1INDEX, 0);
-        writer.alignToPageSize();
+        size_t offsetIndex = writer.getOffset(SPLIT_SEQS);
+        writer.writeData(data, DBReader<unsigned int>::indexMemorySize(*hdbr1), HDR1INDEX, SPLIT_SEQS);
+        writer.alignToPageSize(SPLIT_SEQS);
 
         Debug(Debug::INFO) << "Write HDR1DATA (" << HDR1DATA << ")\n";
-        size_t offsetData = writer.getOffset(0);
-        writer.writeStart(0);
+        size_t offsetData = writer.getOffset(SPLIT_SEQS);
+        writer.writeStart(SPLIT_SEQS);
         for(size_t fileIdx = 0; fileIdx < hdbr1->getDataFileCnt(); fileIdx++) {
-            writer.writeAdd(hdbr1->getDataForFile(fileIdx), hdbr1->getDataSizeForFile(fileIdx), 0);
+            writer.writeAdd(hdbr1->getDataForFile(fileIdx), hdbr1->getDataSizeForFile(fileIdx), SPLIT_SEQS);
         }
-        writer.writeEnd(HDR1DATA, 0);
-        writer.alignToPageSize();
+        writer.writeEnd(HDR1DATA, SPLIT_SEQS);
+        writer.alignToPageSize(SPLIT_SEQS);
         free(data);
         if (hdbr2 == NULL) {
-            writer.writeIndexEntry(HDR2INDEX, offsetIndex, DBReader<unsigned int>::indexMemorySize(*hdbr1)+1, 0);
-            writer.writeIndexEntry(HDR2DATA,  offsetData, hdbr1->getTotalDataSize()+1, 0);
+            writer.writeIndexEntry(HDR2INDEX, offsetIndex, DBReader<unsigned int>::indexMemorySize(*hdbr1)+1, SPLIT_SEQS);
+            writer.writeIndexEntry(HDR2DATA,  offsetData, hdbr1->getTotalDataSize()+1, SPLIT_SEQS);
         }
     }
     if (hdbr2 != NULL) {
         Debug(Debug::INFO) << "Write HDR2INDEX (" << HDR2INDEX << ")\n";
         data = DBReader<unsigned int>::serialize(*hdbr2);
-        writer.writeData(data, DBReader<unsigned int>::indexMemorySize(*hdbr2), HDR2INDEX, 0);
-        writer.alignToPageSize();
+        writer.writeData(data, DBReader<unsigned int>::indexMemorySize(*hdbr2), HDR2INDEX, SPLIT_SEQS);
+        writer.alignToPageSize(SPLIT_SEQS);
         Debug(Debug::INFO) << "Write HDR2DATA (" << HDR2DATA << ")\n";
-        writer.writeStart(0);
+        writer.writeStart(SPLIT_SEQS);
         for(size_t fileIdx = 0; fileIdx < hdbr2->getDataFileCnt(); fileIdx++) {
-            writer.writeAdd(hdbr2->getDataForFile(fileIdx), hdbr2->getDataSizeForFile(fileIdx), 0);
+            writer.writeAdd(hdbr2->getDataForFile(fileIdx), hdbr2->getDataSizeForFile(fileIdx), SPLIT_SEQS);
         }
-        writer.writeEnd(HDR2DATA, 0);
-        writer.alignToPageSize();
+        writer.writeEnd(HDR2DATA, SPLIT_SEQS);
+        writer.alignToPageSize(SPLIT_SEQS);
         free(data);
     }
-    Debug(Debug::INFO) << "Write GENERATOR (" << GENERATOR << ")\n";
-    writer.writeData(version, strlen(version), GENERATOR, 0);
-    writer.alignToPageSize();
+    if (alndbr != NULL) {
+        Debug(Debug::INFO) << "Write ALNINDEX (" << ALNINDEX << ")\n";
+        data = DBReader<unsigned int>::serialize(*alndbr);
+        writer.writeData(data, DBReader<unsigned int>::indexMemorySize(*alndbr), ALNINDEX, SPLIT_SEQS);
+        writer.alignToPageSize(SPLIT_SEQS);
+        Debug(Debug::INFO) << "Write ALNDATA (" << ALNDATA << ")\n";
+        writer.writeStart(SPLIT_SEQS);
+        for(size_t fileIdx = 0; fileIdx < alndbr->getDataFileCnt(); fileIdx++) {
+            writer.writeAdd(alndbr->getDataForFile(fileIdx), alndbr->getDataSizeForFile(fileIdx), SPLIT_SEQS);
+        }
+        writer.writeEnd(ALNDATA, SPLIT_SEQS);
+        writer.alignToPageSize(SPLIT_SEQS);
+        free(data);
+    }
 
     Sequence seq(maxSeqLen, seqType, subMat, kmerSize, hasSpacedKmer, compBiasCorrection, true, spacedKmerPattern);
     // remove x (not needed in index)
@@ -200,8 +222,8 @@ void PrefilteringIndexReader::createIndexFile(const std::string &outDB,
         SequenceLookup *sequenceLookup = NULL;
         IndexBuilder::fillDatabase(&indexTable,
                                    (maskMode == 1 || maskLowerCase == 1) ? &sequenceLookup : NULL,
-                                   (maskMode == 0 ) ? &sequenceLookup : NULL,
-                                   *subMat, &seq, dbr1, dbFrom, dbFrom + dbSize, kmerThr, maskMode, maskLowerCase);
+                                   (maskMode == 0 && maskLowerCase == 0) ? &sequenceLookup : NULL,
+                                   *subMat, &seq, dbr1, dbFrom, dbFrom + dbSize, kmerThr, maskMode, maskLowerCase, maskProb);
         indexTable.printStatistics(subMat->num2aa);
 
         if (sequenceLookup == NULL) {
@@ -214,47 +236,47 @@ void PrefilteringIndexReader::createIndexFile(const std::string &outDB,
         Debug(Debug::INFO) << "Write ENTRIES (" << (keyOffset + ENTRIES) << ")\n";
         char *entries = (char *) indexTable.getEntries();
         size_t entriesSize = indexTable.getTableEntriesNum() * indexTable.getSizeOfEntry();
-        writer.writeData(entries, entriesSize, (keyOffset + ENTRIES), s);
-        writer.alignToPageSize(s);
+        writer.writeData(entries, entriesSize, (keyOffset + ENTRIES), SPLIT_INDX + s);
+        writer.alignToPageSize(SPLIT_INDX + s);
 
         // save the size
         Debug(Debug::INFO) << "Write ENTRIESOFFSETS (" << (keyOffset + ENTRIESOFFSETS) << ")\n";
         char *offsets = (char*)indexTable.getOffsets();
         size_t offsetsSize = (indexTable.getTableSize() + 1) * sizeof(size_t);
-        writer.writeData(offsets, offsetsSize, (keyOffset + ENTRIESOFFSETS), s);
-        writer.alignToPageSize(s);
+        writer.writeData(offsets, offsetsSize, (keyOffset + ENTRIESOFFSETS), SPLIT_INDX + s);
+        writer.alignToPageSize(SPLIT_INDX + s);
         indexTable.deleteEntries();
 
         Debug(Debug::INFO) << "Write SEQINDEXDATASIZE (" << (keyOffset + SEQINDEXDATASIZE) << ")\n";
         int64_t seqindexDataSize = sequenceLookup->getDataSize();
         char *seqindexDataSizePtr = (char *) &seqindexDataSize;
-        writer.writeData(seqindexDataSizePtr, 1 * sizeof(int64_t), (keyOffset + SEQINDEXDATASIZE), s);
-        writer.alignToPageSize(s);
+        writer.writeData(seqindexDataSizePtr, 1 * sizeof(int64_t), (keyOffset + SEQINDEXDATASIZE), SPLIT_INDX + s);
+        writer.alignToPageSize(SPLIT_INDX + s);
 
         size_t *sequenceOffsets = sequenceLookup->getOffsets();
         size_t sequenceCount = sequenceLookup->getSequenceCount();
         Debug(Debug::INFO) << "Write SEQINDEXSEQOFFSET (" << (keyOffset + SEQINDEXSEQOFFSET) << ")\n";
-        writer.writeData((char *) sequenceOffsets, (sequenceCount + 1) * sizeof(size_t), (keyOffset + SEQINDEXSEQOFFSET), s);
-        writer.alignToPageSize(s);
+        writer.writeData((char *) sequenceOffsets, (sequenceCount + 1) * sizeof(size_t), (keyOffset + SEQINDEXSEQOFFSET), SPLIT_INDX + s);
+        writer.alignToPageSize(SPLIT_INDX + s);
 
         Debug(Debug::INFO) << "Write SEQINDEXDATA (" << (keyOffset + SEQINDEXDATA) << ")\n";
-        writer.writeData(sequenceLookup->getData(), (sequenceLookup->getDataSize() + 1) * sizeof(char), (keyOffset + SEQINDEXDATA), s);
-        writer.alignToPageSize(s);
+        writer.writeData(sequenceLookup->getData(), (sequenceLookup->getDataSize() + 1) * sizeof(char), (keyOffset + SEQINDEXDATA), SPLIT_INDX + s);
+        writer.alignToPageSize(SPLIT_INDX + s);
         delete sequenceLookup;
 
         // ENTRIESNUM
         Debug(Debug::INFO) << "Write ENTRIESNUM (" << (keyOffset + ENTRIESNUM) << ")\n";
         uint64_t entriesNum = indexTable.getTableEntriesNum();
         char *entriesNumPtr = (char *) &entriesNum;
-        writer.writeData(entriesNumPtr, 1 * sizeof(uint64_t), (keyOffset + ENTRIESNUM), s);
-        writer.alignToPageSize(s);
+        writer.writeData(entriesNumPtr, 1 * sizeof(uint64_t), (keyOffset + ENTRIESNUM), SPLIT_INDX + s);
+        writer.alignToPageSize(SPLIT_INDX + s);
 
         // SEQCOUNT
         Debug(Debug::INFO) << "Write SEQCOUNT (" << (keyOffset + SEQCOUNT) << ")\n";
         size_t tablesize = indexTable.getSize();
         char *tablesizePtr = (char *) &tablesize;
-        writer.writeData(tablesizePtr, 1 * sizeof(size_t), (keyOffset + SEQCOUNT), s);
-        writer.alignToPageSize(s);
+        writer.writeData(tablesizePtr, 1 * sizeof(size_t), (keyOffset + SEQCOUNT), SPLIT_INDX + s);
+        writer.alignToPageSize(SPLIT_INDX + s);
     }
 
     writer.close(false);
@@ -542,6 +564,11 @@ ScoreMatrix PrefilteringIndexReader::get3MerScoreMatrix(DBReader<unsigned int> *
 std::string PrefilteringIndexReader::searchForIndex(const std::string &pathToDB) {
     std::string outIndexName = pathToDB + ".idx";
     if (FileUtil::fileExists((outIndexName + ".dbtype").c_str()) == true) {
+        const bool ignore = getenv("MMSEQS_IGNORE_INDEX") != NULL;
+        if (ignore) {
+            Debug(Debug::WARNING) << "Ignoring precomputed index, since environment variable MMSEQS_IGNORE_INDEX is set\n";
+            return "";
+        }
         return outIndexName;
     }
     return "";

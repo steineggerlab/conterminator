@@ -2,11 +2,8 @@
 #include "Util.h"
 #include "Command.h"
 #include "DistanceCalculator.h"
+#include "FileUtil.h"
 #include "Timer.h"
-
-#ifndef NEON
-#include <CpuInfo.h>
-#endif
 
 #include <iomanip>
 
@@ -22,33 +19,7 @@ extern bool hide_base_commands;
 extern std::vector<Command> commands;
 extern std::vector<Command> baseCommands;
 extern std::vector<Categories> categories;
-
-void checkCpu() {
-#ifndef NEON
-    CpuInfo info;
-    if (info.HW_x64 == false) {
-        Debug(Debug::ERROR) << "64-bit system is required to run MMseqs2.\n";
-        EXIT(EXIT_FAILURE);
-    }
-#ifdef SEE
-    if(info.HW_SSE41 == false) {
-        Debug(Debug::ERROR) << "SSE4.1 is required to run MMseqs2.\n";
-        EXIT(EXIT_FAILURE);
-    }
-#endif
-#ifdef AVX2
-    if (info.HW_AVX2 == false) {
-        Debug(Debug::ERROR) << "Your machine does not support AVX2.\n";
-        if (info.HW_SSE41 == true) {
-            Debug(Debug::ERROR) << "Please recompile with SSE4.1: cmake -DHAVE_SSE4_1=1 \n";
-        } else {
-            Debug(Debug::ERROR) << "SSE4.1 is the minimum requirement to run MMseqs2.\n";
-        }
-        EXIT(EXIT_FAILURE);
-    }
-#endif
-#endif
-}
+extern void (*validatorUpdate)(void);
 
 Command *getCommandByName(const char *s) {
     for (size_t i = 0; i < commands.size(); i++) {
@@ -73,9 +44,11 @@ int runCommand(Command *p, int argc, const char **argv) {
 
 void printUsage(bool showExtended) {
     std::stringstream usage;
+
     usage << tool_introduction << "\n\n";
     usage << tool_name << " Version: " << version << "\n";
-    usage << "© " << main_author << "\n";
+    usage << "© " << main_author << "\n\n";
+    usage << "usage: " << binary_name << " <command> [<args>]" << "\n";
 
     std::vector<int> showCategoryHeader(categories.size(), 0);
     for (size_t i = 0; i < categories.size(); ++i) {
@@ -207,17 +180,20 @@ int shellcompletion(int argc, const char **argv) {
 }
 
 int main(int argc, const char **argv) {
-    checkCpu();
-
     if (argc < 2) {
         printUsage(false);
         return EXIT_SUCCESS;
     }
 
-    if (argv[1][0] == '-' && argv[1][1] == 'h') {
+    if (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0){
         printUsage(true);
         return EXIT_SUCCESS;
     }
+
+    if(validatorUpdate != NULL){
+        (*validatorUpdate)();
+    }
+    FileUtil::fixRlimitNoFile();
 
     setenv("MMSEQS", argv[0], true);
     Command *c = NULL;

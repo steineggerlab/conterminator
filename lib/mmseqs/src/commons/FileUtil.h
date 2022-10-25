@@ -40,6 +40,8 @@ public:
 
     static size_t getFreeSpace(const char *dir);
 
+    static std::string getCurrentWorkingDirectory();
+
     static void symlinkAlias(const std::string &file, const std::string &alias);
     static void symlinkAbs(const std::string &target, const std::string &link);
 
@@ -48,6 +50,7 @@ public:
     static bool symlinkExists(const std::string &path);
 
     static void copyFile(const char *src, const char *dst);
+    static void copyFile(const std::string& src, const std::string& dst);
 
     static FILE *openAndDelete(const char *fileName, const char *mode);
 
@@ -60,6 +63,11 @@ public:
     static int parseDbType(const char *name);
 
     static std::string createTemporaryDirectory(const std::string& basePath, const std::string& subDirectory);
+
+    static void fixRlimitNoFile();
+
+    // remove forbidden symbols in from filenames
+    static std::string sanitizeFilename(std::string name);
 };
 
 

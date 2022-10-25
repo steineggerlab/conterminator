@@ -133,16 +133,14 @@ void sw(
 
 }
 
-
-int main (int, const char**) {
+int main(int, const char**) {
     const size_t kmer_size=6;
 
     Parameters& par = Parameters::getInstance();
-    SubstitutionMatrix subMat(par.scoringMatrixFile.aminoacids, 2.0, 0.0);
-    std::cout << "Subustitution matrix:\n";
+    par.initMatrices();
+    SubstitutionMatrix subMat(par.scoringMatrixFile.values.aminoacid().c_str(), 2.0, 0.0);
+    std::cout << "Substitution matrix:\n";
     SubstitutionMatrix::print(subMat.subMatrix,subMat.num2aa,subMat.alphabetSize);
-
-
     //   BaseMatrix::print(subMat.subMatrix, subMat.alphabetSize);
     std::cout << "\n";
 
@@ -166,7 +164,7 @@ int main (int, const char**) {
     Sequence* dbSeq = new Sequence(10000, 0, &subMat, kmer_size, true, false);
     //dbSeq->mapSequence(1,"lala2",ref_seq);
     dbSeq->mapSequence(1,1,tim2.c_str(), tim2.size());
-    SmithWaterman aligner(15000, subMat.alphabetSize, false);
+    SmithWaterman aligner(15000, subMat.alphabetSize, false, 1.0, Parameters::DBTYPE_AMINO_ACIDS);
     int8_t * tinySubMat = new int8_t[subMat.alphabetSize*subMat.alphabetSize];
     for (int i = 0; i < subMat.alphabetSize; i++) {
         for (int j = 0; j < subMat.alphabetSize; j++) {

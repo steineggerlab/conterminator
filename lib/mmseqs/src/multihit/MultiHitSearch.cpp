@@ -29,26 +29,24 @@ int multihitsearch(int argc, const char **argv, const Command &command) {
     Parameters &par = Parameters::getInstance();
     setMultiHitSearchWorkflowDefaults(&par);
 
-    par.overrideParameterDescription((Command &) command, par.PARAM_MAX_REJECTED.uniqid, NULL, NULL,
-                                     par.PARAM_MAX_REJECTED.category | MMseqsParameter::COMMAND_EXPERT);
-    par.overrideParameterDescription((Command &) command, par.PARAM_DB_OUTPUT.uniqid, NULL, NULL,
-                                     par.PARAM_DB_OUTPUT.category | MMseqsParameter::COMMAND_EXPERT);
-    par.overrideParameterDescription((Command &) command, par.PARAM_OVERLAP.uniqid, NULL, NULL,
-                                     par.PARAM_OVERLAP.category | MMseqsParameter::COMMAND_EXPERT);
-
+    par.PARAM_MAX_REJECTED.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_DB_OUTPUT.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_OVERLAP.addCategory(MMseqsParameter::COMMAND_EXPERT);
     for (size_t i = 0; i < par.extractorfs.size(); i++){
-        par.overrideParameterDescription((Command &)command, par.extractorfs[i]->uniqid, NULL, NULL, par.extractorfs[i]->category | MMseqsParameter::COMMAND_EXPERT);
+        par.extractorfs[i]->addCategory(MMseqsParameter::COMMAND_EXPERT);
     }
     for (size_t i = 0; i < par.translatenucs.size(); i++){
-        par.overrideParameterDescription((Command &)command, par.translatenucs[i]->uniqid, NULL, NULL, par.translatenucs[i]->category | MMseqsParameter::COMMAND_EXPERT);
+        par.translatenucs[i]->addCategory(MMseqsParameter::COMMAND_EXPERT);
+    }
+    for (size_t i = 0; i < par.splitsequence.size(); i++) {
+        par.splitsequence[i]->addCategory(MMseqsParameter::COMMAND_EXPERT);
     }
     for (size_t i = 0; i < par.result2profile.size(); i++){
-        par.overrideParameterDescription((Command &)command, par.result2profile[i]->uniqid, NULL, NULL, par.result2profile[i]->category | MMseqsParameter::COMMAND_EXPERT);
+        par.result2profile[i]->addCategory(MMseqsParameter::COMMAND_EXPERT);
     }
-    par.overrideParameterDescription((Command &) command, par.PARAM_THREADS.uniqid, NULL, NULL,
-                                     par.PARAM_THREADS.category & ~MMseqsParameter::COMMAND_EXPERT);
-    par.overrideParameterDescription((Command &) command, par.PARAM_V.uniqid, NULL, NULL,
-                                     par.PARAM_V.category & ~MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_COMPRESSED.removeCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_THREADS.removeCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_V.removeCategory(MMseqsParameter::COMMAND_EXPERT);
 
     par.parseParameters(argc, argv, command, true, 0, 0);
 
@@ -61,7 +59,7 @@ int multihitsearch(int argc, const char **argv, const Command &command) {
             Debug(Debug::INFO) << "Created dir " << par.db4 << "\n";
         }
     }
-    size_t hash = par.hashParameter(par.filenames, par.multihitsearch);
+    size_t hash = par.hashParameter(command.databases, par.filenames, par.multihitsearch);
     std::string tmpDir = par.db4 + "/" + SSTR(hash);
     if (FileUtil::directoryExists(tmpDir.c_str()) == false) {
         if (FileUtil::makeDir(tmpDir.c_str()) == false) {
@@ -80,6 +78,7 @@ int multihitsearch(int argc, const char **argv, const Command &command) {
     cmd.addVariable("SEARCH_PAR", par.createParameterString(par.searchworkflow).c_str());
     cmd.addVariable("BESTHITBYSET_PAR", par.createParameterString(par.besthitbyset).c_str());
     cmd.addVariable("THREADS_PAR", par.createParameterString(par.onlythreads).c_str());
+    cmd.addVariable("VERBOSITY", par.createParameterString(par.onlyverbosity).c_str());
 
     FileUtil::writeFile(tmpDir + "/multihitsearch.sh", multihitsearch_sh, multihitsearch_sh_len);
     std::string program(tmpDir + "/multihitsearch.sh");

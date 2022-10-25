@@ -38,9 +38,10 @@ int splitdb(int argc, const char **argv, const Command& command) {
         for (size_t i = startIndex; i < (startIndex + domainSize); i++) {
             unsigned int outerKey = dbr.getDbKey(i);
             char *data = dbr.getData(i, 0);
-            writer.writeData(data, dbr.getEntryLen(i), outerKey);
+            writer.writeData(data, dbr.getEntryLen(i) - 1, outerKey);
         }
         writer.close();
+        DBReader<unsigned int>::softlinkDb(par.db1, outDb, DBFiles::SEQUENCE_ANCILLARY);
     }
 
     dbr.close();

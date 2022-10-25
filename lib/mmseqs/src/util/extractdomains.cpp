@@ -208,7 +208,7 @@ std::vector<Domain> mapMsa(const std::string &msa, const std::vector<Domain> &do
 int doExtract(Parameters &par, DBReader<unsigned int> &blastTabReader,
               const std::pair<std::string, std::string>& resultdb,
               const size_t dbFrom, const size_t dbSize) {
-    SubstitutionMatrix subMat(par.scoringMatrixFile.aminoacids, 2.0, 0);
+    SubstitutionMatrix subMat(par.scoringMatrixFile.values.aminoacid().c_str(), 2.0, 0);
 
     std::string msaDataName = par.db2;
     std::string msaIndexName = par.db2Index;
@@ -261,7 +261,7 @@ int doExtract(Parameters &par, DBReader<unsigned int> &blastTabReader,
             char *tabData = blastTabReader.getData(i, thread_idx);
             size_t tabLength = blastTabReader.getEntryLen(i) - 1;
             const std::vector<Domain> result = getEntries(std::string(tabData, tabLength));
-            if (result.size() == 0) {
+            if (result.empty()) {
                 Debug(Debug::WARNING) << "Can not map any entries for entry " << id << "!\n";
                 continue;
             }

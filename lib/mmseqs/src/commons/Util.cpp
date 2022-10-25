@@ -16,6 +16,7 @@
 
 #include "simd.h"
 #include "MemoryMapped.h"
+#include "MemoryTracker.h"
 #include <algorithm>
 #include <sys/mman.h>
 #include <fstream>      // std::ifstream
@@ -78,65 +79,6 @@ void Util::decomposeDomain(size_t domain_size, size_t world_rank,
         *subdomain_size += domain_size % world_size;
     }
 }
-
-
-// http://jgamble.ripco.net/cgi-bin/nw.cgi?inputs=8&algorithm=batcher&output=svg
-// sorting networks
-void Util::rankedDescSort8(short *val, unsigned int *index){
-#define SWAP(x,y){\
-if( val[x] < val[y] ){   \
-short tmp1 = val[x];    \
-val[x] = val[y];     \
-val[y] = tmp1;        \
-unsigned int tmp2 = index[x];      \
-index[x] = index[y]; \
-index[y] = tmp2;      \
-} \
-}
-    SWAP(0,4); SWAP(1,5); SWAP(2,6); SWAP(3,7);
-    SWAP(0,2); SWAP(1,3); SWAP(4,6); SWAP(5,7);
-    SWAP(2,4); SWAP(3,5); SWAP(0,1); SWAP(6,7);
-    SWAP(2,3); SWAP(4,5);
-    SWAP(1,4); SWAP(3,6);
-    SWAP(1,2); SWAP(3,4); SWAP(5,6);
-#undef SWAP
-}
-
-
-
-// http://jgamble.ripco.net/cgi-bin/nw.cgi?inputs=32&algorithm=batcher&output=svg
-// sorting networks
-void Util::rankedDescSort32(short *val, unsigned int *index){
-#define SWAP(x,y){\
-if( val[x] < val[y] ){   \
-short tmp1 = val[x];    \
-val[x] = val[y];     \
-val[y] = tmp1;        \
-unsigned int tmp2 = index[x];      \
-index[x] = index[y]; \
-index[y] = tmp2;      \
-} \
-}
-    SWAP(0,16);SWAP(1,17);SWAP(2,18);SWAP(3,19);SWAP(4,20);SWAP(5,21);SWAP(6,22);SWAP(7,23);SWAP(8,24);SWAP(9,25);SWAP(10,26);SWAP(11,27);
-    SWAP(12,28);SWAP(13,29);SWAP(14,30);SWAP(15,31);SWAP(0,8);SWAP(1,9);SWAP(2,10);SWAP(3,11);SWAP(4,12);SWAP(5,13);SWAP(6,14);SWAP(7,15);
-    SWAP(16,24);SWAP(17,25);SWAP(18,26);SWAP(19,27);SWAP(20,28);SWAP(21,29);SWAP(22,30);SWAP(23,31);SWAP(8,16);SWAP(9,17);SWAP(10,18);
-    SWAP(11,19);SWAP(12,20);SWAP(13,21);SWAP(14,22);SWAP(15,23);SWAP(0,4);SWAP(1,5);SWAP(2,6);SWAP(3,7);SWAP(24,28);SWAP(25,29);SWAP(26,30);
-    SWAP(27,31);SWAP(8,12);SWAP(9,13);SWAP(10,14);SWAP(11,15);SWAP(16,20);SWAP(17,21);SWAP(18,22);SWAP(19,23);SWAP(0,2);SWAP(1,3);SWAP(28,30);
-    SWAP(29,31);SWAP(4,16);SWAP(5,17);SWAP(6,18);SWAP(7,19);SWAP(12,24);SWAP(13,25);SWAP(14,26);SWAP(15,27);SWAP(0,1);SWAP(30,31);
-    SWAP(4,8);SWAP(5,9);SWAP(6,10);SWAP(7,11);SWAP(12,16);SWAP(13,17);SWAP(14,18);SWAP(15,19);SWAP(20,24);SWAP(21,25);SWAP(22,26);SWAP(23,27);
-    SWAP(4,6);SWAP(5,7);SWAP(8,10);SWAP(9,11);SWAP(12,14);SWAP(13,15);SWAP(16,18);SWAP(17,19);SWAP(20,22);SWAP(21,23);SWAP(24,26);SWAP(25,27);
-    SWAP(2,16);SWAP(3,17);SWAP(6,20);SWAP(7,21);SWAP(10,24);SWAP(11,25);SWAP(14,28);SWAP(15,29);
-    SWAP(2,8);SWAP(3,9);SWAP(6,12);SWAP(7,13);SWAP(10,16);SWAP(11,17);SWAP(14,20);SWAP(15,21);SWAP(18,24);SWAP(19,25);SWAP(22,28);SWAP(23,29);
-    SWAP(2,4);SWAP(3,5);SWAP(6,8);SWAP(7,9);SWAP(10,12);SWAP(11,13);SWAP(14,16);SWAP(15,17);SWAP(18,20);SWAP(19,21);SWAP(22,24);SWAP(23,25);
-    SWAP(26,28);SWAP(27,29);SWAP(2,3);SWAP(4,5);SWAP(6,7);SWAP(8,9);SWAP(10,11);SWAP(12,13);SWAP(14,15);SWAP(16,17);SWAP(18,19);SWAP(20,21);
-    SWAP(22,23);SWAP(24,25);SWAP(26,27);SWAP(28,29);SWAP(1,16);SWAP(3,18);SWAP(5,20);SWAP(7,22);SWAP(9,24);SWAP(11,26);SWAP(13,28);SWAP(15,30);
-    SWAP(1,8);SWAP(3,10);SWAP(5,12);SWAP(7,14);SWAP(9,16);SWAP(11,18);SWAP(13,20);SWAP(15,22);SWAP(17,24);SWAP(19,26);SWAP(21,28);SWAP(23,30);
-    SWAP(1,4);SWAP(3,6);SWAP(5,8);SWAP(7,10);SWAP(9,12);SWAP(11,14);SWAP(13,16);SWAP(15,18);SWAP(17,20);SWAP(19,22);SWAP(21,24);SWAP(23,26);
-    SWAP(25,28);SWAP(27,30);SWAP(1,2);SWAP(3,4);SWAP(5,6);SWAP(7,8);SWAP(9,10);SWAP(11,12);SWAP(13,14);SWAP(15,16);SWAP(17,18);SWAP(19,20);
-    SWAP(21,22);SWAP(23,24);SWAP(25,26);SWAP(27,28);SWAP(29,30);
-#undef SWAP
-}
-
 
 // http://jgamble.ripco.net/cgi-bin/nw.cgi?inputs=20&algorithm=batcher&output=svg
 // sorting networks
@@ -388,7 +330,7 @@ uint64_t Util::getL2CacheSize() {
 
 char Util::touchMemory(const char *memory, size_t size) {
 #ifdef HAVE_POSIX_MADVISE
-    if (posix_madvise ((void*)memory, size, POSIX_MADV_WILLNEED) != 0){
+    if (size > 0 && posix_madvise ((void*)memory, size, POSIX_MADV_WILLNEED) != 0){
         Debug(Debug::ERROR) << "posix_madvise returned an error (touchMemory)\n";
     }
 #endif
@@ -425,16 +367,15 @@ size_t Util::ompCountLines(const char* data, size_t dataSize, unsigned int MAYBE
 #ifdef OPENMP
     int threadCnt = 1;
     const int totalThreadCnt = threads;
-    if (totalThreadCnt > 4) {
+    if (totalThreadCnt >= 4) {
         threadCnt = 4;
     }
 #endif
 
+    size_t pageSize = getPageSize();
 #pragma omp parallel num_threads(threadCnt)
     {
-        size_t pageSize = getPageSize();
-
-#pragma omp for schedule(dynamic, 1) reduction (+: cnt)
+#pragma omp for schedule(static) reduction (+: cnt)
         for (size_t page = 0; page < dataSize; page += pageSize) {
             size_t readUntil = std::min(dataSize, page + pageSize);
             for(size_t pos = page; pos < readUntil; pos++ ){
@@ -445,6 +386,7 @@ size_t Util::ompCountLines(const char* data, size_t dataSize, unsigned int MAYBE
 
     return cnt;
 }
+
 
 
 
@@ -536,8 +478,7 @@ bool Util::canBeCovered(const float covThr, const int covMode, float queryLength
         case Parameters::COV_MODE_QUERY:
             return ((targetLength / queryLength) >= covThr);
         case Parameters::COV_MODE_TARGET:
-            // No assumptions possible without the alignment length
-            return true;
+            return ((queryLength/targetLength) >= covThr) ;
         case Parameters::COV_MODE_LENGTH_QUERY:
             return ((targetLength / queryLength) >= covThr) && (targetLength / queryLength) <= 1.0;
         case Parameters::COV_MODE_LENGTH_TARGET:
@@ -578,6 +519,8 @@ int Util::swapCoverageMode(int covMode) {
             return Parameters::COV_MODE_LENGTH_TARGET;
         case Parameters::COV_MODE_LENGTH_TARGET:
             return Parameters::COV_MODE_LENGTH_QUERY;
+        case Parameters::COV_MODE_LENGTH_SHORTER:
+            return Parameters::COV_MODE_LENGTH_SHORTER;
     }
     Debug(Debug::ERROR) << "Unknown coverage mode " << covMode << ".\n";
     EXIT(EXIT_FAILURE);
@@ -604,7 +547,7 @@ uint64_t Util::revComplement(const uint64_t kmer, const int k) {
     // create lookup (set 16 bytes in 128 bit)
     // a lookup entry at the index of two nucleotides (4 bit) describes the reverse
     // complement of these two nucleotide in the higher 4 bits (lookup1) or in the lower 4 bits (lookup2)
-#define c (char)
+#define c (signed char)
     __m128i lookup1 = _mm_set_epi8(c(0x50),c(0x10),c(0xD0),c(0x90),c(0x40),c(0x00),c(0xC0),c(0x80),
                                    c(0x70),c(0x30),c(0xF0),c(0xB0),c(0x60),c(0x20),c(0xE0),c(0xA0));
     __m128i lookup2 = _mm_set_epi8(c(0x05),c(0x01),c(0x0D),c(0x09),c(0x04),c(0x00),c(0x0C),c(0x08),
@@ -620,35 +563,36 @@ uint64_t Util::revComplement(const uint64_t kmer, const int k) {
 #undef c
 
     // use _mm_shuffle_epi8 to look up reverse complement
-#ifdef NEON
-    kmer1 = vreinterpretq_m128i_u8(vqtbl1q_u8(vreinterpretq_u8_m128i(lookup1),vreinterpretq_u8_m128i(kmer1)));
-#else
-    kmer1 =_mm_shuffle_epi8(lookup1, kmer1);
-#endif
-
-
-#ifdef NEON
-    kmer2 = vreinterpretq_m128i_u8(vqtbl1q_u8(vreinterpretq_u8_m128i(lookup2),vreinterpretq_u8_m128i(kmer2)));
-#else
+    kmer1 = _mm_shuffle_epi8(lookup1, kmer1);
     kmer2 = _mm_shuffle_epi8(lookup2, kmer2);
-#endif
-
 
     // _mm_or_si128: bitwise OR
     x = _mm_or_si128(kmer1, kmer2);
 
     // set upper 8 bytes to 0 and revert order of lower 8 bytes
-
-#ifdef NEON
-    x = vreinterpretq_m128i_u8(vqtbl1q_u8(vreinterpretq_u8_m128i(x),vreinterpretq_u8_m128i(upper)));
-#else
     x = _mm_shuffle_epi8(x, upper);
-#endif
 
     // shift out the unused nucleotide positions (1 <= k <=32 )
     // broadcast 128 bit to 64 bit
     return (((uint64_t)_mm_cvtsi128_si64(x)) >> (uint64_t)(64-2*k));
 
+}
+
+size_t Util::computeMemory(size_t limit) {
+    size_t memoryLimit;
+    if (limit > 0) {
+        memoryLimit = limit;
+    } else {
+        memoryLimit = static_cast<size_t>(Util::getTotalSystemMemory() * 0.9);
+    }
+    if(MemoryTracker::getSize() > memoryLimit){
+        Debug(Debug::ERROR) << "Not enough memory to keep dbreader/write in memory!\n";
+        Debug(Debug::ERROR) << "Memory limit: " << memoryLimit << " dbreader/writer need: " << MemoryTracker::getSize() << "\n";
+        EXIT(EXIT_FAILURE);
+    }else{
+        memoryLimit -= MemoryTracker::getSize();
+    }
+    return memoryLimit;
 }
 
 template<> std::string SSTR(char x) { return std::string(1, x); }

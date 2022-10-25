@@ -15,10 +15,8 @@ BaseMatrix::BaseMatrix(){
     num2aa = new char[255];
     aa2num = new unsigned char[UCHAR_MAX];
     for (int i = 0; i < UCHAR_MAX; ++i) {
-        aa2num[i]=-1;
+        aa2num[i] = UCHAR_MAX;
     }
-
-
 }
 
 BaseMatrix::~BaseMatrix(){
@@ -44,6 +42,7 @@ void BaseMatrix::initMatrixMemory(int alphabetSize) {
     probMatrix = new double*[alphabetSize];
     subMatrix = new short*[alphabetSize];
     subMatrixPseudoCounts = new float*[alphabetSize];
+    // temporary memory setter
 
     for (int i = 0; i < alphabetSize; i++){
         pBack[i] = 0.0;
@@ -137,6 +136,8 @@ void BaseMatrix::generateSubMatrix(double ** probMatrix, double ** subMatrix, fl
 //        subMatrix[i][size - 1] = -.7;
 //    }
 }
+
+// made non-static for testing purpose
 void BaseMatrix::generateSubMatrix(double ** probMatrix, float ** subMatrixPseudoCounts, short ** subMatrix, int size, bool containsX, double bitFactor, double scoringBias){
     double** sm = new double* [size];
     for (int i = 0; i < size; i++)
@@ -151,7 +152,7 @@ void BaseMatrix::generateSubMatrix(double ** probMatrix, float ** subMatrixPseud
             subMatrix[i][j] = (pValNBitScale < 0.0) ? pValNBitScale - 0.5 : pValNBitScale + 0.5;
         }
     }
-
+    scoreBias = scoringBias;
     for (int i = 0; i < size; i++)
         delete[] sm[i];
     delete[] sm;
@@ -166,20 +167,22 @@ double BaseMatrix::getBackgroundProb(size_t)  {
     EXIT(EXIT_FAILURE);
 }
 
-size_t BaseMatrix::memorySize(BaseMatrix *pMatrix){
-    size_t matrixDataSize = pMatrix->matrixData.size() * sizeof(char);
-    size_t matrixNameSize = pMatrix->matrixName.size() * sizeof(char);
+size_t BaseMatrix::memorySize(std::string & matrixName, std::string & matrixData){
+    size_t matrixDataSize = matrixData.size() * sizeof(char);
+    size_t matrixNameSize = matrixName.size() * sizeof(char);
     return matrixDataSize + 1 + matrixNameSize;
 }
 
-char * BaseMatrix::serialize(BaseMatrix *pMatrix) {
-    char* data = (char*) malloc(memorySize(pMatrix));
+char * BaseMatrix::serialize(std::string &matrixName, std::string &matrixData ) {
+    char* data = (char*) malloc(memorySize(matrixName, matrixData) + 1);
     char* p = data;
-    memcpy(p, pMatrix->matrixName.c_str(), pMatrix->matrixName.size() * sizeof(char));
-    p += (pMatrix->matrixName.size() * sizeof(char));
+    memcpy(p, matrixName.c_str(), matrixName.size() * sizeof(char));
+    p += (matrixName.size() * sizeof(char));
     memcpy(p, ":", 1);
     p += 1;
-    memcpy(p, pMatrix->matrixData.c_str(), pMatrix->matrixData.size() * sizeof(char));
+    memcpy(p, matrixData.c_str(), matrixData.size() * sizeof(char));
+    p += (matrixData.size() * sizeof(char));;
+    memcpy(p, "\0", 1);
     return data;
 }
 
@@ -208,4 +211,21 @@ std::pair<std::string, std::string> BaseMatrix::unserialize(const char * data){
         matrixName = std::string(data);
     }
     return std::make_pair(matrixName, matrixData);
+}
+
+std::string BaseMatrix::unserializeName(const char * data) {
+    size_t len = 0;
+    while(data[len] != '\0'){
+        len++;
+    }
+    for (size_t pos = 0; pos < std::max(len, (size_t) 4) - 4; pos++) {
+        if (data[pos] == '.'
+            && data[pos + 1] == 'o'
+            && data[pos + 2] == 'u'
+            && data[pos + 3] == 't'
+            && data[pos + 4] == ':') {
+            return std::string(data, pos + 4);
+        }
+    }
+    return data;
 }

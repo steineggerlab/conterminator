@@ -8,7 +8,7 @@
 #include "Parameters.h"
 #include "Util.h"
 #include "Debug.h"
-
+#include "FastSort.h"
 #include <cmath>
 
 #ifdef OPENMP
@@ -20,13 +20,14 @@
 void AlignmentSymmetry::readInData(DBReader<unsigned int>*alnDbr, DBReader<unsigned int>*seqDbr,
                                    unsigned int **elementLookupTable, unsigned short **elementScoreTable,
                                    int scoretype, size_t *offsets) {
+    const int alnType = alnDbr->getDbtype();
     const size_t dbSize = seqDbr->getSize();
     const size_t flushSize = 1000000;
+    Debug::Progress progress(dbSize);
     size_t iterations = static_cast<int>(ceil(static_cast<double>(dbSize)/static_cast<double>(flushSize)));
     for(size_t it = 0; it < iterations; it++) {
         size_t start = it * flushSize;
         size_t bucketSize = std::min(dbSize - (it * flushSize), flushSize);
-        Debug::Progress progress(bucketSize);
 #pragma omp parallel
         {
             unsigned int thread_idx = 0;
@@ -42,9 +43,24 @@ void AlignmentSymmetry::readInData(DBReader<unsigned int>*alnDbr, DBReader<unsig
                 char *data = alnDbr->getDataByDBKey(clusterId, thread_idx);
 
                 if (*data == '\0') { // check if file contains entry
-                    Debug(Debug::ERROR) << "Sequence " << i
-                                        << " does not contain any sequence for key " << clusterId
-                                        << "!\n";
+                    elementLookupTable[i][0] = seqDbr->getId(clusterId);
+                    if (elementScoreTable != NULL) {
+                        if (Parameters::isEqualDbtype(alnType, Parameters::DBTYPE_ALIGNMENT_RES)) {
+                            if (scoretype == Parameters::APC_ALIGNMENTSCORE) {
+                                //column 1 = alignment score
+                                elementScoreTable[i][0] = (unsigned short) (USHRT_MAX);
+                            } else {
+                                //column 2 = sequence identity [0-1]
+                                elementScoreTable[i][0] = (unsigned short) (1.0 * 1000.0f);
+                            }
+                        } else if (Parameters::isEqualDbtype(alnType, Parameters::DBTYPE_PREFILTER_RES) ||
+                                   Parameters::isEqualDbtype(alnType, Parameters::DBTYPE_PREFILTER_REV_RES)) {
+                            //column 1 = alignment score or sequence identity [0-100]
+                            elementScoreTable[i][0] = (unsigned short) (USHRT_MAX);
+                        } else if (Parameters::isEqualDbtype(alnType, Parameters::DBTYPE_CLUSTER_RES)) {
+                            elementScoreTable[i][0] = (unsigned short) (USHRT_MAX);
+                        }
+                    }
                     continue;
                 }
                 size_t setSize = LEN(offsets, i);
@@ -62,15 +78,32 @@ void AlignmentSymmetry::readInData(DBReader<unsigned int>*alnDbr, DBReader<unsig
                     const unsigned int key = (unsigned int) strtoul(dbKey, NULL, 10);
                     const size_t currElement = seqDbr->getId(key);
                     if (elementScoreTable != NULL) {
-                        if (scoretype == Parameters::APC_ALIGNMENTSCORE) {
-                            //column 1 = alignment score
-                            Util::parseByColumnNumber(data, similarity, 1);
-                            elementScoreTable[i][writePos] = (unsigned short) (atof(similarity));
-                        } else {
-                            //column 2 = sequence identity
-                            Util::parseByColumnNumber(data, similarity, 2);
-                            elementScoreTable[i][writePos] = (unsigned short) (atof(similarity) * 1000.0f);
+                        if (Parameters::isEqualDbtype(alnType,Parameters::DBTYPE_ALIGNMENT_RES)) {
+                            if (scoretype == Parameters::APC_ALIGNMENTSCORE) {
+                                //column 1 = alignment score
+                                Util::parseByColumnNumber(data, similarity, 1);
+                                elementScoreTable[i][writePos] = (unsigned short) (atof(similarity));
+                            } else {
+                                //column 2 = sequence identity [0-1]
+                                Util::parseByColumnNumber(data, similarity, 2);
+                                elementScoreTable[i][writePos] = (unsigned short) (atof(similarity) * 1000.0f);
+                            }
                         }
+                        else if (Parameters::isEqualDbtype(alnType, Parameters::DBTYPE_PREFILTER_RES) ||
+                                 Parameters::isEqualDbtype(alnType, Parameters::DBTYPE_PREFILTER_REV_RES)) {
+                            //column 1 = alignment score or sequence identity [0-100]
+                            Util::parseByColumnNumber(data, similarity, 1);
+                            short sim = atoi(similarity);
+                            elementScoreTable[i][writePos] = (unsigned short) (sim >0 ? sim : -sim);
+                        }
+                        else if (Parameters::isEqualDbtype(alnType, Parameters::DBTYPE_CLUSTER_RES)) {
+                            elementScoreTable[i][writePos] = (unsigned short) (USHRT_MAX);
+                        }
+                        else {
+                            Debug(Debug::ERROR) << "Alignment format is not supported!\n";
+                            EXIT(EXIT_FAILURE);
+                        }
+
                     }
                     if (currElement == UINT_MAX || currElement > seqDbr->getSize()) {
                         Debug(Debug::ERROR) << "Element " << dbKey
@@ -185,7 +218,7 @@ void AlignmentSymmetry::addMissingLinks(unsigned int **elementLookupTable,
 void AlignmentSymmetry::sortElements(unsigned int **elementLookupTable, size_t *elementOffsets, size_t dbSize) {
 #pragma omp parallel for schedule(dynamic, 1000)
     for (size_t i = 0; i < dbSize; i++) {
-        std::sort(elementLookupTable[i], elementLookupTable[i] + LEN(elementOffsets, i));
+        SORT_SERIAL(elementLookupTable[i], elementLookupTable[i] + LEN(elementOffsets, i));
     }
 }
 #undef LEN

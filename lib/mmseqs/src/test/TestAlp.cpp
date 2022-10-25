@@ -35,8 +35,8 @@ Contents: pairwise alignment algorithms
 
 
 #include <vector>
-#include<fstream>
-#include<string>
+#include <fstream>
+#include <string>
 #include <SubstitutionMatrix.h>
 #include <EvalueComputation.h>
 
@@ -47,7 +47,7 @@ const char* binary_name = "test_alp";
 using namespace Sls;
 using namespace std;
 
-int main (int, const char**) {
+int main(int, const char**) {
     error ee_error("",0);
 
 
@@ -116,7 +116,10 @@ int main (int, const char**) {
     const double kTolerance = 0.05;
     const double maxMegabytes = 500;
     const long randomSeed = 42;
-    SubstitutionMatrix subMat("blosum62.out", 2.0, 0.0);
+
+    Parameters& par = Parameters::getInstance();
+    par.initMatrices();
+    SubstitutionMatrix subMat(par.scoringMatrixFile.values.aminoacid().c_str(), 2.0, 0.0);
     long ** tmpMat = new long *[subMat.alphabetSize];
     long * tmpMatData = new long[subMat.alphabetSize*subMat.alphabetSize];
 

@@ -53,7 +53,7 @@ public:
 void IndexBuilder::fillDatabase(IndexTable *indexTable, SequenceLookup **maskedLookup,
                                 SequenceLookup **unmaskedLookup,BaseMatrix &subMat, Sequence *seq,
                                 DBReader<unsigned int> *dbr, size_t dbFrom, size_t dbTo, int kmerThr,
-                                bool mask, bool maskLowerCaseMode) {
+                                bool mask, bool maskLowerCaseMode, float maskProb) {
     Debug(Debug::INFO) << "Index table: counting k-mers\n";
 
     const bool isProfile = Parameters::isEqualDbtype(seq->getSeqType(), Parameters::DBTYPE_HMM_PROFILE);
@@ -85,10 +85,7 @@ void IndexBuilder::fillDatabase(IndexTable *indexTable, SequenceLookup **maskedL
     }
 
     // identical scores for memory reduction code
-    char *idScoreLookup = NULL;
-    if (Parameters::isEqualDbtype(seq->getSeqType(), Parameters::DBTYPE_PROFILE_STATE_SEQ) == false) {
-        idScoreLookup = getScoreLookup(subMat);
-    }
+    char *idScoreLookup = getScoreLookup(subMat);
     Debug::Progress progress(dbTo-dbFrom);
 
     size_t maskedResidues = 0;
@@ -101,7 +98,7 @@ void IndexBuilder::fillDatabase(IndexTable *indexTable, SequenceLookup **maskedL
 #endif
 
         Indexer idxer(static_cast<unsigned int>(indexTable->getAlphabetSize()), seq->getKmerSize());
-        Sequence s(seq->getMaxLen(), seq->getSeqType(), &subMat, seq->getKmerSize(), seq->isSpaced(), false, true, seq->getSpacedKmerPattern());
+        Sequence s(seq->getMaxLen(), seq->getSeqType(), &subMat, seq->getKmerSize(), seq->isSpaced(), false, true, seq->getUserSpacedKmerPattern());
 
         KmerGenerator *generator = NULL;
         if (isProfile) {
@@ -109,7 +106,8 @@ void IndexBuilder::fillDatabase(IndexTable *indexTable, SequenceLookup **maskedL
             generator->setDivideStrategy(s.profile_matrix);
         }
 
-        unsigned int *buffer = new unsigned int[seq->getMaxLen()];
+        unsigned int *buffer = static_cast<unsigned int*>(malloc(seq->getMaxLen() * sizeof(unsigned int)));
+        unsigned int bufferSize = seq->getMaxLen();
         #pragma omp for schedule(dynamic, 100) reduction(+:totalKmerCount, maskedResidues)
         for (size_t id = dbFrom; id < dbTo; id++) {
             progress.updateProgress();
@@ -119,7 +117,10 @@ void IndexBuilder::fillDatabase(IndexTable *indexTable, SequenceLookup **maskedL
             unsigned int qKey = dbr->getDbKey(id);
 
             s.mapSequence(id - dbFrom, qKey, seqData, dbr->getSeqLen(id));
-
+            if(s.getMaxLen() >= bufferSize ){
+                buffer = static_cast<unsigned int*>(realloc(buffer, s.getMaxLen() * sizeof(unsigned int)));
+                bufferSize = seq->getMaxLen();
+            }
             // count similar or exact k-mers based on sequence type
             if (isProfile) {
                 // Find out if we should also mask profiles
@@ -140,7 +141,7 @@ void IndexBuilder::fillDatabase(IndexTable *indexTable, SequenceLookup **maskedL
                                                             0.05 /*options.repeatEndProb*/,
                                                             0.9 /*options.repeatOffsetProbDecay*/,
                                                             0, 0,
-                                                            0.9 /*options.minMaskProb*/,
+                                                            maskProb /*options.minMaskProb*/,
                                                             probMatrix->hardMaskTable);
                 }
 
@@ -162,7 +163,7 @@ void IndexBuilder::fillDatabase(IndexTable *indexTable, SequenceLookup **maskedL
             }
         }
 
-        delete[] buffer;
+        free(buffer);
 
         if (generator != NULL) {
             delete generator;
@@ -213,10 +214,10 @@ void IndexBuilder::fillDatabase(IndexTable *indexTable, SequenceLookup **maskedL
 #ifdef OPENMP
         thread_idx = static_cast<unsigned int>(omp_get_thread_num());
 #endif
-        Sequence s(seq->getMaxLen(), seq->getSeqType(), &subMat, seq->getKmerSize(), seq->isSpaced(), false, true, seq->getSpacedKmerPattern());
+        Sequence s(seq->getMaxLen(), seq->getSeqType(), &subMat, seq->getKmerSize(), seq->isSpaced(), false, true, seq->getUserSpacedKmerPattern());
         Indexer idxer(static_cast<unsigned int>(indexTable->getAlphabetSize()), seq->getKmerSize());
-        IndexEntryLocalTmp *buffer = new IndexEntryLocalTmp[seq->getMaxLen()];
-
+        IndexEntryLocalTmp *buffer = static_cast<IndexEntryLocalTmp *>(malloc( seq->getMaxLen() * sizeof(IndexEntryLocalTmp)));
+        size_t bufferSize = seq->getMaxLen();
         KmerGenerator *generator = NULL;
         if (isProfile) {
             generator = new KmerGenerator(seq->getKmerSize(), indexTable->getAlphabetSize(), kmerThr);
@@ -231,10 +232,10 @@ void IndexBuilder::fillDatabase(IndexTable *indexTable, SequenceLookup **maskedL
             unsigned int qKey = dbr->getDbKey(id);
             if (isProfile) {
                 s.mapSequence(id - dbFrom, qKey, dbr->getData(id, thread_idx), dbr->getSeqLen(id));
-                indexTable->addSimilarSequence(&s, generator, &idxer);
+                indexTable->addSimilarSequence(&s, generator, &buffer, bufferSize, &idxer);
             } else {
                 s.mapSequence(id - dbFrom, qKey, sequenceLookup->getSequence(id - dbFrom));
-                indexTable->addSequence(&s, &idxer, buffer, kmerThr, idScoreLookup);
+                indexTable->addSequence(&s, &idxer, &buffer, bufferSize, kmerThr, idScoreLookup);
             }
         }
 
@@ -242,7 +243,7 @@ void IndexBuilder::fillDatabase(IndexTable *indexTable, SequenceLookup **maskedL
             delete generator;
         }
 
-        delete [] buffer;
+        free(buffer);
     }
     if(idScoreLookup!=NULL){
         delete[] idScoreLookup;

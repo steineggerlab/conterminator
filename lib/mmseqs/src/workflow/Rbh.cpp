@@ -9,6 +9,7 @@
 
 void setRbhDefaults(Parameters *p) {
     p->compBiasCorrection = 0;
+    p->alignmentMode = Parameters::ALIGNMENT_MODE_SCORE_COV_SEQID;
     p->maskMode = 0;
     p->orfStartMode = 1;
     p->orfMinLength = 10;
@@ -20,28 +21,28 @@ int rbh(int argc, const char **argv, const Command &command) {
     setRbhDefaults(&par);
 
     // set a lot of possibly misleading comments to EXPERT mode
-    par.overrideParameterDescription((Command &) command, par.PARAM_OVERLAP.uniqid, NULL, NULL,
-                                     par.PARAM_OVERLAP.category | MMseqsParameter::COMMAND_EXPERT);
-    par.overrideParameterDescription((Command &) command, par.PARAM_DB_OUTPUT.uniqid, NULL, NULL,
-                                     par.PARAM_DB_OUTPUT.category | MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_OVERLAP.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_DB_OUTPUT.addCategory(MMseqsParameter::COMMAND_EXPERT);
 
     for (size_t i = 0; i < par.extractorfs.size(); i++){
-        par.overrideParameterDescription((Command &)command, par.extractorfs[i]->uniqid, NULL, NULL, par.extractorfs[i]->category | MMseqsParameter::COMMAND_EXPERT);
+        par.extractorfs[i]->addCategory(MMseqsParameter::COMMAND_EXPERT);
     }
     for (size_t i = 0; i < par.translatenucs.size(); i++){
-        par.overrideParameterDescription((Command &)command, par.translatenucs[i]->uniqid, NULL, NULL, par.translatenucs[i]->category | MMseqsParameter::COMMAND_EXPERT);
+        par.translatenucs[i]->addCategory(MMseqsParameter::COMMAND_EXPERT);
+    }
+    for (size_t i = 0; i < par.splitsequence.size(); i++) {
+        par.splitsequence[i]->addCategory(MMseqsParameter::COMMAND_EXPERT);
     }
     // restore threads and verbosity
-    par.overrideParameterDescription((Command &) command, par.PARAM_V.uniqid, NULL, NULL,
-                                     par.PARAM_V.category & ~MMseqsParameter::COMMAND_EXPERT);
-    par.overrideParameterDescription((Command &) command, par.PARAM_THREADS.uniqid, NULL, NULL,
-                                     par.PARAM_THREADS.category & ~MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_COMPRESSED.removeCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_V.removeCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_THREADS.removeCategory(MMseqsParameter::COMMAND_EXPERT);
 
     par.parseParameters(argc, argv, command, true, 0, 0);
 
 
     std::string tmpDir = par.db4;
-    std::string hash = SSTR(par.hashParameter(par.filenames, par.searchworkflow));
+    std::string hash = SSTR(par.hashParameter(command.databases, par.filenames, par.searchworkflow));
     if (par.reuseLatest) {
         hash = FileUtil::getHashFromSymLink(tmpDir + "/latest");
     }
@@ -58,7 +59,7 @@ int rbh(int argc, const char **argv, const Command &command) {
     cmd.addVariable("REMOVE_TMP", par.removeTmpFiles ? "TRUE" : NULL);
     cmd.addVariable("VERB_COMP_PAR", par.createParameterString(par.verbandcompression).c_str());
     cmd.addVariable("THREADS_COMP_PAR", par.createParameterString(par.threadsandcompression).c_str());
-
+    cmd.addVariable("VERBOSITY", par.createParameterString(par.onlyverbosity).c_str());
     std::string program = tmpDir + "/rbh.sh";
     FileUtil::writeFile(program, rbh_sh, rbh_sh_len);
     cmd.execProgram(program.c_str(), par.filenames);

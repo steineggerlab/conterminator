@@ -21,14 +21,19 @@ void setLinclustWorkflowDefaults(Parameters *p) {
 int linclust(int argc, const char **argv, const Command& command) {
     Parameters& par = Parameters::getInstance();
     setLinclustWorkflowDefaults(&par);
-    par.overrideParameterDescription((Command &)command, par.PARAM_RESCORE_MODE.uniqid, NULL, NULL, par.PARAM_RESCORE_MODE.category |MMseqsParameter::COMMAND_EXPERT );
-    par.overrideParameterDescription((Command &)command, par.PARAM_MAX_REJECTED.uniqid, NULL, NULL, par.PARAM_MAX_REJECTED.category |MMseqsParameter::COMMAND_EXPERT );
-    par.overrideParameterDescription((Command &)command, par.PARAM_MAX_ACCEPT.uniqid, NULL, NULL, par.PARAM_MAX_ACCEPT.category |MMseqsParameter::COMMAND_EXPERT );
+    par.PARAM_ADD_BACKTRACE.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_ALT_ALIGNMENT.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_ZDROP.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_RESCORE_MODE.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_MAX_REJECTED.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_MAX_ACCEPT.addCategory(MMseqsParameter::COMMAND_EXPERT);
+    par.overrideParameterDescription(par.PARAM_S, "Sensitivity will be automatically determined but can be adjusted", NULL, par.PARAM_S.category | MMseqsParameter::COMMAND_EXPERT);
+    par.PARAM_INCLUDE_ONLY_EXTENDABLE.addCategory(MMseqsParameter::COMMAND_EXPERT);
 
     par.parseParameters(argc, argv, command, true, 0, 0);
 
     std::string tmpDir = par.db3;
-    std::string hash = SSTR(par.hashParameter(par.filenames, par.linclustworkflow));
+    std::string hash = SSTR(par.hashParameter(command.databases, par.filenames, par.linclustworkflow));
     if (par.reuseLatest) {
         hash = FileUtil::getHashFromSymLink(tmpDir + "/latest");
     }
@@ -41,7 +46,7 @@ int linclust(int argc, const char **argv, const Command& command) {
     cmd.addVariable("RUNNER", par.runner.c_str());
 
     // save some values to restore them later
-    size_t alphabetSize = par.alphabetSize;
+    MultiParam<NuclAA<int>>alphabetSize = par.alphabetSize;
     size_t kmerSize = par.kmerSize;
     // # 1. Finding exact $k$-mer matches.
     bool kmerSizeWasSet = false;
@@ -74,7 +79,7 @@ int linclust(int argc, const char **argv, const Command& command) {
         par.kmerSize = Parameters::CLUST_LINEAR_DEFAULT_K;
     }
     if (alphabetSizeWasSet == false) {
-        par.alphabetSize = Parameters::CLUST_LINEAR_DEFAULT_ALPH_SIZE;
+        par.alphabetSize = MultiParam<NuclAA<int>>(NuclAA<int>(Parameters::CLUST_LINEAR_DEFAULT_ALPH_SIZE, 5));
     }
 
     const int dbType = FileUtil::parseDbType(par.db1.c_str());
@@ -90,6 +95,8 @@ int linclust(int argc, const char **argv, const Command& command) {
     cmd.addVariable("FILTER", Parameters::isEqualDbtype(dbType, Parameters::DBTYPE_AMINO_ACIDS) ? "1" : NULL);
     cmd.addVariable("KMERMATCHER_PAR", par.createParameterString(par.kmermatcher).c_str());
     cmd.addVariable("VERBOSITY", par.createParameterString(par.onlyverbosity).c_str());
+    cmd.addVariable("VERBOSITYANDCOMPRESS", par.createParameterString(par.threadsandcompression).c_str());
+
     par.alphabetSize = alphabetSize;
     par.kmerSize = kmerSize;
 
