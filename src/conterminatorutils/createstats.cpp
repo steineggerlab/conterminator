@@ -195,7 +195,7 @@ int createstats(int argc, const char **argv, const Command& command) {
                 if(node == NULL){
                     taxons.append("Undef");
                 }else{
-                    taxons.append(node->name);
+                    taxons.append(t->getString(node->nameIdx));
                 }
                 taxons.push_back(',');
                 dbLength.push_back(',');
@@ -223,7 +223,7 @@ int createstats(int argc, const char **argv, const Command& command) {
             if(node == NULL) {
                 resultData.append("Undef");
             }else{
-                resultData.append(node->name);
+                resultData.append(t->getString(node->nameIdx));
             }
             resultData.push_back('\t');
             resultData.append(SSTR(sequences.getSeqLen(sequences.getId(maxDbKey))));

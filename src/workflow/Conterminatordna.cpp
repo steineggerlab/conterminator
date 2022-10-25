@@ -77,7 +77,7 @@ int conterminatordna(int argc, const char **argv, const Command &command) {
 
     CommandCaller cmd;
     std::string tmpDir = par.db4;
-    std::string hash = SSTR(par.hashParameter(par.filenames, par.linclustworkflow));
+    std::string hash = SSTR(par.hashParameter(command.databases, par.filenames, par.conterminatordna));
     if (par.reuseLatest) {
         hash = FileUtil::getHashFromSymLink(tmpDir + "/latest");
     }

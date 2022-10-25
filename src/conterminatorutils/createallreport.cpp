@@ -188,7 +188,7 @@ int createallreport(int argc, const char **argv, const Command& command) {
                     if (node == NULL) {
                         resultData.append("Undef");
                     } else {
-                        resultData.append(node->name);
+                        resultData.append(t->getString(node->nameIdx));
                     }
                     resultData.push_back('\n');
                 }

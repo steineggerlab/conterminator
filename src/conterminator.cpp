@@ -1,7 +1,8 @@
 #include "Command.h"
 #include "LocalCommandDeclarations.h"
 #include "LocalParameters.h"
-
+#include "DownloadDatabase.h"
+#include "Prefiltering.h"
 const char* binary_name = "conterminator";
 const char* tool_name = "conterminator";
 const char* tool_introduction = "Search for Contamination.";
@@ -81,3 +82,11 @@ std::vector<struct Command> commands = {
                  {"resultDB",   DbType::ACCESS_MODE_OUTPUT, DbType::NEED_DATA, &DbValidator::alignmentDb }}}
 
 };
+
+
+void (*validatorUpdate)(void) = 0;
+std::vector<DatabaseDownload> externalDownloads = {};
+std::vector<KmerThreshold> externalThreshold = {};
+bool hide_base_downloads = false;
+extern const char* MMSEQS_CURRENT_INDEX_VERSION;
+const char* index_version_compatible = MMSEQS_CURRENT_INDEX_VERSION;
